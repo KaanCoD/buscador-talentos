@@ -1,8 +1,6 @@
-
 """
-🔍 Buscador de Talentos — Streamlit + Supabase
-Pipeline: Upload CSV/XLSX → Limpeza → Normalização → Deduplicação → Supabase → Busca
-Suporta 1M+ leads
+Buscador de Talentos - Streamlit + Supabase
+Pipeline: Upload CSV/XLSX - Limpeza - Normalizacao - Deduplicacao - Supabase - Busca
 """
 import streamlit as st
 import pandas as pd
@@ -11,9 +9,6 @@ import unicodedata
 import hashlib
 from supabase import create_client
 
-# ══════════════════════════════════════════════════════════════════════════════
-# CONFIG
-# ══════════════════════════════════════════════════════════════════════════════
 st.set_page_config(page_title="Buscador de Talentos", page_icon="🔍", layout="wide")
 
 TABLE = "leads"
@@ -42,47 +37,10 @@ COL_MAP = {
     'Categoria_Cargo': 'categoria_cargo',
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
-# SUPABASE CONNECTION
-# ══════════════════════════════════════════════════════════════════════════════
+
 @st.cache_resource
 def get_supabase():
-    url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"]
-    return create_client(url, key)
-
-
-def ensure_table_exists():
-    sb = get_supabase()
-    sql = """
-    CREATE TABLE IF NOT EXISTS leads (
-        id BIGSERIAL PRIMARY KEY,
-        name TEXT, cargo TEXT, occupation TEXT, job_title TEXT, company_name TEXT,
-        expertise TEXT, nivel_senioridade TEXT, senioridade_normalizada TEXT,
-        segmento_empresa TEXT, segmento_mercado TEXT, linkedin_email TEXT,
-        ddd_telefone TEXT, linkedin_url TEXT, cidade TEXT, uf TEXT, estado TEXT,
-        pais TEXT, publico_alvo_ads TEXT, recrutador TEXT, sales_navigator_id TEXT,
-        senioridade_aproximada BOOLEAN DEFAULT FALSE, linkedin_slug TEXT,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-    CREATE INDEX IF NOT EXISTS idx_leads_linkedin_slug ON leads (linkedin_slug);
-    CREATE INDEX IF NOT EXISTS idx_leads_sales_navigator_id ON leads (sales_navigator_id);
-    CREATE INDEX IF NOT EXISTS idx_leads_linkedin_email ON leads (linkedin_email);
-    CREATE INDEX IF NOT EXISTS idx_leads_senioridade ON leads (senioridade_normalizada);
-    CREATE INDEX IF NOT EXISTS idx_leads_expertise ON leads (expertise);
-    CREATE INDEX IF NOT EXISTS idx_leads_uf ON leads (uf);
-    CREATE INDEX IF NOT EXISTS idx_leads_estado ON leads (estado);
-    """
-    sb.postgrest.auth(sb.options.headers.get("apikey"))
-    sb.rpc("exec_sql", {"query": sql}).execute()
-
-
-def init_table_via_rpc():
-    try:
-        ensure_table_exists()
-        return True
-    except Exception:
-        return False
+    return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
 
 def count_leads():
@@ -130,8 +88,7 @@ def search_leads(query="", filters=None, limit=50):
         if filters.get('estados'):
             or_parts = ",".join(
                 [f"uf.ilike.{e}" for e in filters['estados']] +
-                [f"estado.ilike.{e}" for e in filters['estados']]
-            )
+                [f"estado.ilike.{e}" for e in filters['estados']])
             q = q.or_(or_parts)
     if query.strip():
         terms = [t for t in query.lower().split() if len(t) > 2]
@@ -141,8 +98,7 @@ def search_leads(query="", filters=None, limit=50):
                 f"job_title.ilike.%{term}%", f"expertise.ilike.%{term}%",
                 f"company_name.ilike.%{term}%", f"name.ilike.%{term}%",
                 f"cidade.ilike.%{term}%", f"uf.ilike.%{term}%",
-                f"estado.ilike.%{term}%", f"segmento_mercado.ilike.%{term}%",
-            ])
+                f"estado.ilike.%{term}%", f"segmento_mercado.ilike.%{term}%"])
             q = q.or_(or_parts)
     result = q.limit(limit).execute()
     return result.data or []
@@ -160,7 +116,7 @@ def insert_leads_batch(records, progress_callback=None):
             inserted += len(batch)
             if progress_callback:
                 pct = 75 + int((i / total) * 25)
-                progress_callback(min(pct, 99), f"📤 Enviando... {inserted:,}/{total:,}")
+                progress_callback(min(pct, 99), f"Enviando... {inserted:,}/{total:,}")
         except Exception as e:
             err_msg = str(e)
             if 'duplicate' in err_msg.lower() or '23505' in err_msg:
@@ -174,7 +130,7 @@ def insert_leads_batch(records, progress_callback=None):
                 errors.append(f"Lote {i//BATCH_SIZE + 1}: {err_msg[:500]}")
                 if len(errors) == 1:
                     sample = {k: str(v)[:50] for k, v in batch[0].items() if v is not None}
-                    errors.append(f"Amostra do registro: {sample}")
+                    errors.append(f"Amostra: {sample}")
                 if len(errors) >= 6:
                     break
     if errors:
@@ -182,24 +138,20 @@ def insert_leads_batch(records, progress_callback=None):
     return inserted
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# FUNÇÕES AUXILIARES DO PIPELINE
-# ══════════════════════════════════════════════════════════════════════════════
 def strip_accents(s):
-    return ''.join(
-        c for c in unicodedata.normalize('NFD', str(s))
-        if unicodedata.category(c) != 'Mn'
-    ).lower().strip()
+    return ''.join(c for c in unicodedata.normalize('NFD', str(s)) if unicodedata.category(c) != 'Mn').lower().strip()
 
 
 def _norm_str(s):
-    if pd.isna(s): return None
+    if pd.isna(s):
+        return None
     s = str(s).strip().lower()
     return s if s not in ('', 'nan', 'none', 'n/a') else None
 
 
 def _norm_linkedin(url):
-    if pd.isna(url): return None
+    if pd.isna(url):
+        return None
     url = str(url).strip().lower().split('?')[0].rstrip('/')
     if '/in/' in url:
         slug = url.split('/in/')[-1].rstrip('/')
@@ -207,63 +159,60 @@ def _norm_linkedin(url):
     return None
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# ETAPA 1 — LIMPEZA DE LOCALIZAÇÃO
-# ══════════════════════════════════════════════════════════════════════════════
+def _safe_clean(val):
+    if val is None:
+        return None
+    try:
+        if pd.isna(val):
+            return None
+    except (TypeError, ValueError):
+        pass
+    s = str(val).strip()
+    if s.lower() in ('nan', 'none', '', 'nat', 'n/a'):
+        return None
+    return s
+
+
 def limpar_localizacao(df):
     df = df.copy()
     for col in ['Cidade', 'UF', 'Estado', 'Pais', 'location']:
         if col not in df.columns:
             df[col] = ''
         df[col] = df[col].astype(str).replace('nan', '')
-    uf_map = {'Federal District': 'Brasilia', 'Brasília': 'Brasilia'}
+    uf_map = {'Federal District': 'Brasilia', 'Brasilia': 'Brasilia'}
     for old, new in uf_map.items():
         df.loc[df['UF'] == old, 'UF'] = new
-    cidade_map = {'Federal District': 'Brasilia', 'Distrito Federal': 'Brasilia', 'Brasília': 'Brasilia'}
+    cidade_map = {'Federal District': 'Brasilia', 'Distrito Federal': 'Brasilia', 'Brasilia': 'Brasilia'}
     for old, new in cidade_map.items():
         df.loc[df['Cidade'] == old, 'Cidade'] = new
-    cidade_to_uf = {
-        'Planaltina': 'Distrito Federal', 'Brasilia': 'Distrito Federal',
-        'Taguatinga': 'Distrito Federal', 'Ceilândia': 'Distrito Federal',
-        'Gama': 'Distrito Federal',
-    }
-    for cidade, uf in cidade_to_uf.items():
+    for cidade, uf in {'Planaltina': 'Distrito Federal', 'Brasilia': 'Distrito Federal', 'Taguatinga': 'Distrito Federal', 'Ceilandia': 'Distrito Federal', 'Gama': 'Distrito Federal'}.items():
         df.loc[df['Cidade'] == cidade, 'UF'] = uf
-    cidade_to_estado = {
-        'Sao Paulo': 'Sao Paulo', 'Osasco': 'Sao Paulo',
-        'Guarulhos': 'Sao Paulo', 'San Pablo': 'Filipinas',
-    }
-    for cidade, estado in cidade_to_estado.items():
+    for cidade, estado in {'Sao Paulo': 'Sao Paulo', 'Osasco': 'Sao Paulo', 'Guarulhos': 'Sao Paulo', 'San Pablo': 'Filipinas'}.items():
         df.loc[df['Cidade'] == cidade, 'Estado'] = estado
-    estado_map = {'San Pablo': 'Sao Paulo', 'Sao Paulo': 'SP', 'Brasil': 'DF', 'Minnesota': 'EUA'}
-    for old, new in estado_map.items():
+    for old, new in {'San Pablo': 'Sao Paulo', 'Sao Paulo': 'SP', 'Brasil': 'DF', 'Minnesota': 'EUA'}.items():
         df.loc[df['Estado'] == old, 'Estado'] = new
     df.loc[df['UF'] == 'San Pablo', 'Estado'] = 'Filipinas'
     df.loc[df['UF'] == 'Distrito Federal', 'Estado'] = 'DF'
-    df.loc[df['location'] == 'Brésil', 'Pais'] = 'Brasil'
-    df.loc[df['location'] == 'Brésil', 'location'] = 'Brasil'
+    df.loc[df['location'] == 'Brasil', 'Pais'] = 'Brasil'
     df.loc[df['location'] == 'Brazil', 'location'] = 'Brasil'
     mask_exterior = (df['Pais'].str.strip() != '') & (df['Pais'] != 'Brasil') & (df['Pais'] != 'nan')
     df.loc[mask_exterior, 'Estado'] = 'Exterior'
     return df
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# ETAPA 2 — NORMALIZAÇÃO DE SENIORIDADE
-# ══════════════════════════════════════════════════════════════════════════════
 CAT18_SEN_MAP = {
-    'Liderança/Executivo': 'Lideranca/Executivo', 'Liderança': 'Lideranca/Executivo',
-    'Sênior/Especialista': 'Senior/Especialista', 'Sênior': 'Senior/Especialista',
+    'Lideranca/Executivo': 'Lideranca/Executivo', 'Lideranca': 'Lideranca/Executivo',
+    'Senior/Especialista': 'Senior/Especialista', 'Senior': 'Senior/Especialista',
     'Especialista': 'Senior/Especialista', 'Pleno': 'Pleno',
-    'Júnior': 'Junior/Estagio', 'Júnior/Trainee': 'Junior/Estagio',
-    'Estágio/Trainee': 'Junior/Estagio', 'Estagiário': 'Junior/Estagio',
-    'Coordenação': 'Lideranca/Executivo', 'Gerência': 'Lideranca/Executivo',
+    'Junior': 'Junior/Estagio', 'Junior/Trainee': 'Junior/Estagio',
+    'Estagio/Trainee': 'Junior/Estagio', 'Estagiario': 'Junior/Estagio',
+    'Coordenacao': 'Lideranca/Executivo', 'Gerencia': 'Lideranca/Executivo',
 }
 
 EXPERTISE_SEN_MAP = {
     'Dados e BI': 'Pleno', 'Engenharia de software': 'Pleno',
-    'Agile': 'Senior/Especialista', 'Recrutamento e seleção': 'Pleno',
-    'Operações e processos': 'Pleno', 'Finanças e controladoria': 'Senior/Especialista',
+    'Agile': 'Senior/Especialista', 'Recrutamento e selecao': 'Pleno',
+    'Operacoes e processos': 'Pleno', 'Financas e controladoria': 'Senior/Especialista',
     'Customer success': 'Pleno',
 }
 
@@ -296,15 +245,14 @@ def _inferir_exact(nivel, cargo, jt, cat18):
         mapped = CAT18_SEN_MAP.get(suffix)
         if mapped and mapped != 'Nao Identificado': return mapped
     prefix18 = cat18_s.split(' - ')[0].strip() if ' - ' in cat18_s else cat18_s
-    if prefix18 in ('Executivo/Dono', 'Gestão/Liderança'): return 'Lideranca/Executivo'
+    if prefix18 in ('Executivo/Dono', 'Gestao/Lideranca'): return 'Lideranca/Executivo'
     return 'Nao Identificado'
 
 
 def _build_lookups(dataframe):
     if 'Nivel_Senioridade' not in dataframe.columns:
         return {}, {}, {}, {}, {}, {}
-    has_nivel = dataframe['Nivel_Senioridade'].notna() & \
-                (~dataframe['Nivel_Senioridade'].astype(str).isin(['', 'nan', 'NaN']))
+    has_nivel = dataframe['Nivel_Senioridade'].notna() & (~dataframe['Nivel_Senioridade'].astype(str).isin(['', 'nan', 'NaN']))
     base = dataframe[has_nivel].copy()
     if base.empty:
         return {}, {}, {}, {}, {}, {}
@@ -362,7 +310,7 @@ def _rescue(cargo, jt, cat18, segmento, expertise, lookups):
         mapped = CAT18_SEN_MAP.get(suffix)
         if mapped and mapped != 'Nao Identificado': return mapped, False
     prefix18 = cat18_s.split(' - ')[0].strip() if ' - ' in cat18_s else cat18_s
-    if prefix18 in ('Executivo/Dono', 'Gestão/Liderança'): return 'Lideranca/Executivo', False
+    if prefix18 in ('Executivo/Dono', 'Gestao/Lideranca'): return 'Lideranca/Executivo', False
     if str(segmento) == 'Executivo/Dono': return 'Lideranca/Executivo', False
     exp = str(expertise).strip()
     if exp in EXPERTISE_SEN_MAP: return EXPERTISE_SEN_MAP[exp], False
@@ -377,35 +325,20 @@ def _rescue(cargo, jt, cat18, segmento, expertise, lookups):
 
 
 def normalizar_senioridade(df):
-    for col in ['Nivel_Senioridade', 'Cargo', 'job_title', 'Categoria_Cargo',
-                'segmento_mercado', 'Expertise']:
+    for col in ['Nivel_Senioridade', 'Cargo', 'job_title', 'Categoria_Cargo', 'segmento_mercado', 'Expertise']:
         if col not in df.columns:
             df[col] = ''
     lookups = _build_lookups(df)
-    df['senioridade_normalizada'] = df.apply(
-        lambda r: _inferir_exact(
-            r.get('Nivel_Senioridade', ''), r.get('Cargo', ''),
-            r.get('job_title', ''), r.get('Categoria_Cargo', '')
-        ), axis=1
-    )
+    df['senioridade_normalizada'] = df.apply(lambda r: _inferir_exact(r.get('Nivel_Senioridade', ''), r.get('Cargo', ''), r.get('job_title', ''), r.get('Categoria_Cargo', '')), axis=1)
     df['senioridade_aproximada'] = False
     mask_nao = df['senioridade_normalizada'] == 'Nao Identificado'
     if mask_nao.any():
-        rescued = df[mask_nao].apply(
-            lambda r: _rescue(
-                r.get('Cargo', ''), r.get('job_title', ''),
-                r.get('Categoria_Cargo', ''), r.get('segmento_mercado', ''),
-                r.get('Expertise', ''), lookups
-            ), axis=1
-        )
+        rescued = df[mask_nao].apply(lambda r: _rescue(r.get('Cargo', ''), r.get('job_title', ''), r.get('Categoria_Cargo', ''), r.get('segmento_mercado', ''), r.get('Expertise', ''), lookups), axis=1)
         df.loc[mask_nao, 'senioridade_normalizada'] = rescued.apply(lambda x: x[0])
         df.loc[mask_nao, 'senioridade_aproximada'] = rescued.apply(lambda x: x[1])
     return df
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# ETAPA 3 — DEDUPLICAÇÃO LOCAL
-# ══════════════════════════════════════════════════════════════════════════════
 def deduplicar_local(df):
     total_antes = len(df)
     for col in ['salesNavigatorId', 'linkedinUrl', 'linkedinEmail']:
@@ -426,9 +359,6 @@ def deduplicar_local(df):
     return df, total_antes, len(df)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# PIPELINE COMPLETO
-# ══════════════════════════════════════════════════════════════════════════════
 def pipeline_e_salva(uploaded_file, progress_callback=None):
     DATAIKU_SCHEMA = [
         'Sheet Name','Origem','name','firstName','lastName',
@@ -443,13 +373,13 @@ def pipeline_e_salva(uploaded_file, progress_callback=None):
         'lastEmailSentDate','connectionRequestDate',
         'senioridade_normalizada','senioridade_aproximada',
     ]
-    if progress_callback: progress_callback(5, "📂 Lendo arquivo...")
+    if progress_callback: progress_callback(5, "Lendo arquivo...")
     name = uploaded_file.name.lower()
     if name.endswith('.csv'):
         df = pd.read_csv(uploaded_file, dtype=str)
         known_cols = {'name', 'linkedinEmail', 'Cargo', 'linkedinUrl', 'company_name', 'Cidade'}
         if not known_cols.intersection(set(df.columns)):
-            if progress_callback: progress_callback(8, "📂 CSV sem cabeçalho detectado, aplicando schema...")
+            if progress_callback: progress_callback(8, "CSV sem cabecalho detectado...")
             uploaded_file.seek(0)
             if len(df.columns) == len(DATAIKU_SCHEMA):
                 df = pd.read_csv(uploaded_file, dtype=str, header=None, names=DATAIKU_SCHEMA)
@@ -467,22 +397,20 @@ def pipeline_e_salva(uploaded_file, progress_callback=None):
     else:
         raise ValueError("Use CSV ou XLSX")
     total_raw = len(df)
-    for col in ['Cidade', 'UF', 'Estado', 'Pais', 'location', 'Nivel_Senioridade',
-                'Cargo', 'job_title', 'Categoria_Cargo', 'segmento_mercado',
-                'Expertise', 'salesNavigatorId', 'linkedinUrl', 'linkedinEmail']:
+    for col in ['Cidade', 'UF', 'Estado', 'Pais', 'location', 'Nivel_Senioridade', 'Cargo', 'job_title', 'Categoria_Cargo', 'segmento_mercado', 'Expertise', 'salesNavigatorId', 'linkedinUrl', 'linkedinEmail']:
         if col not in df.columns:
             df[col] = ''
-    if progress_callback: progress_callback(20, "🧹 Limpando localização...")
+    if progress_callback: progress_callback(20, "Limpando localizacao...")
     df = limpar_localizacao(df)
-    if progress_callback: progress_callback(40, "🎯 Normalizando senioridade...")
+    if progress_callback: progress_callback(40, "Normalizando senioridade...")
     df = normalizar_senioridade(df)
-    if progress_callback: progress_callback(60, "🔍 Deduplicando...")
+    if progress_callback: progress_callback(60, "Deduplicando...")
     df, antes, depois = deduplicar_local(df)
-    if progress_callback: progress_callback(75, f"📤 Enviando {depois:,} leads pro banco...")
+    if progress_callback: progress_callback(70, f"Preparando {depois:,} leads...")
     df_out = pd.DataFrame()
     for orig, dest in COL_MAP.items():
         if orig in df.columns:
-            df_out[dest] = df[orig].astype(str).replace({'nan': None, 'None': None, '': None})
+            df_out[dest] = df[orig].apply(_safe_clean)
         else:
             df_out[dest] = None
     slugs = []
@@ -501,10 +429,19 @@ def pipeline_e_salva(uploaded_file, progress_callback=None):
                     slug = f"hash:{hashlib.md5(raw.encode()).hexdigest()[:16]}"
         slugs.append(slug)
     df_out['linkedin_slug'] = slugs
+    if progress_callback: progress_callback(75, f"Enviando {depois:,} leads pro banco...")
     records = df_out.to_dict(orient='records')
     for r in records:
         for k, v in list(r.items()):
-            if v in ('nan', 'None', '', 'none', 'NaN'):
+            if v is None:
+                continue
+            try:
+                if pd.isna(v):
+                    r[k] = None
+                    continue
+            except (TypeError, ValueError):
+                pass
+            if str(v).strip().lower() in ('nan', 'none', '', 'nat', 'n/a'):
                 r[k] = None
         sa = r.get('senioridade_aproximada')
         if sa is not None:
@@ -512,104 +449,44 @@ def pipeline_e_salva(uploaded_file, progress_callback=None):
         else:
             r['senioridade_aproximada'] = False
     inserted = insert_leads_batch(records, progress_callback)
-    if progress_callback: progress_callback(100, f"✅ {inserted:,} leads salvos!")
-    return {
-        'arquivo': uploaded_file.name,
-        'linhas_raw': total_raw,
-        'antes_dedup': antes,
-        'depois_dedup': depois,
-        'inseridos': inserted,
-    }
+    if progress_callback: progress_callback(100, f"Pronto! {inserted:,} leads salvos!")
+    return {'arquivo': uploaded_file.name, 'linhas_raw': total_raw, 'antes_dedup': antes, 'depois_dedup': depois, 'inseridos': inserted}
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# INTERFACE STREAMLIT
-# ══════════════════════════════════════════════════════════════════════════════
-st.markdown("""
-<style>
-    .metric-card {
-        background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-        padding: 1.2rem; border-radius: 12px; border: 1px solid #475569; text-align: center;
-    }
-    .metric-card h3 { color: #94a3b8; font-size: 0.85rem; margin: 0; }
-    .metric-card p { color: #f1f5f9; font-size: 1.8rem; font-weight: 700; margin: 0.3rem 0 0 0; }
-    .lead-card {
-        background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary);
-        border-radius: 10px; padding: 1rem 1.2rem; margin-bottom: 0.6rem;
-    }
-    .lead-card:hover { border-color: var(--color-border-info); }
-    .lead-name { font-size: 1.05rem; font-weight: 600; color: var(--color-text-primary); }
-    .lead-cargo { font-size: 0.85rem; color: var(--color-text-secondary); }
-    .lead-company { font-size: 0.85rem; color: var(--color-text-tertiary); }
-    .lead-tags { margin-top: 0.4rem; }
-    .lead-tag {
-        display: inline-block; background: var(--color-background-tertiary);
-        color: var(--color-text-secondary); padding: 2px 8px; border-radius: 4px;
-        font-size: 0.75rem; margin-right: 4px; margin-top: 4px;
-    }
-    .lead-tag.senior { background: var(--color-background-info); color: var(--color-text-info); }
-    .lead-tag.location { background: var(--color-background-success); color: var(--color-text-success); }
-</style>
-""", unsafe_allow_html=True)
-
+st.markdown('<style>.metric-card{background:linear-gradient(135deg,#1e293b 0%,#334155 100%);padding:1.2rem;border-radius:12px;border:1px solid #475569;text-align:center}.metric-card h3{color:#94a3b8;font-size:.85rem;margin:0}.metric-card p{color:#f1f5f9;font-size:1.8rem;font-weight:700;margin:.3rem 0 0}.lead-card{background:var(--color-background-secondary);border:.5px solid var(--color-border-tertiary);border-radius:10px;padding:1rem 1.2rem;margin-bottom:.6rem}.lead-card:hover{border-color:var(--color-border-info)}.lead-name{font-size:1.05rem;font-weight:600;color:var(--color-text-primary)}.lead-cargo{font-size:.85rem;color:var(--color-text-secondary)}.lead-company{font-size:.85rem;color:var(--color-text-tertiary)}.lead-tags{margin-top:.4rem}.lead-tag{display:inline-block;background:var(--color-background-tertiary);color:var(--color-text-secondary);padding:2px 8px;border-radius:4px;font-size:.75rem;margin-right:4px;margin-top:4px}.lead-tag.senior{background:var(--color-background-info);color:var(--color-text-info)}.lead-tag.location{background:var(--color-background-success);color:var(--color-text-success)}</style>', unsafe_allow_html=True)
 
 with st.sidebar:
-    st.markdown("## 📤 Importar Planilha")
+    st.markdown("## Importar Planilha")
     total = count_leads()
     if total > 0:
         st.success(f"Banco ativo: **{total:,}** leads")
     else:
-        st.info("Banco vazio — suba sua primeira planilha!")
+        st.info("Banco vazio - suba sua primeira planilha!")
     st.markdown("---")
     uploaded = st.file_uploader("Arraste CSV ou XLSX aqui", type=['csv', 'xlsx', 'xls'], label_visibility="collapsed")
-    if uploaded and st.button("🚀 Processar e Salvar", type="primary", use_container_width=True):
+    if uploaded and st.button("Processar e Salvar", type="primary", use_container_width=True):
         progress_bar = st.progress(0)
-        status_text = st.empty()
         spinner_placeholder = st.empty()
-        if 'cancelar_upload' not in st.session_state:
-            st.session_state.cancelar_upload = False
-        stop_btn = st.button("⏹️ Parar processamento", use_container_width=True)
-        if stop_btn:
-            st.session_state.cancelar_upload = True
         def update_progress(pct, msg):
             progress_bar.progress(pct / 100)
-            spinner_placeholder.markdown(
-                f'<div style="display:flex;align-items:center;gap:8px;">'
-                f'<div style="width:20px;height:20px;border:3px solid var(--color-border-tertiary);'
-                f'border-top:3px solid var(--color-text-info);border-radius:50%;'
-                f'animation:spin 1s linear infinite;"></div>'
-                f'<span style="font-size:0.85rem;color:var(--color-text-secondary);">{msg}</span>'
-                f'</div>'
-                f'<style>@keyframes spin {{0%{{transform:rotate(0deg)}}100%{{transform:rotate(360deg)}}}}</style>',
-                unsafe_allow_html=True
-            )
-            status_text.text("")
+            spinner_placeholder.markdown(f'<div style="display:flex;align-items:center;gap:8px;"><div style="width:20px;height:20px;border:3px solid #ccc;border-top:3px solid #3b82f6;border-radius:50%;animation:spin 1s linear infinite;"></div><span style="font-size:.85rem;color:#888;">{msg}</span></div><style>@keyframes spin{{0%{{transform:rotate(0deg)}}100%{{transform:rotate(360deg)}}}}</style>', unsafe_allow_html=True)
         try:
             result = pipeline_e_salva(uploaded, update_progress)
             spinner_placeholder.empty()
-            st.session_state['pipeline_success'] = (
-                f"✅ **{result['arquivo']}** — "
-                f"Linhas: {result['linhas_raw']:,} → "
-                f"Dedup: {result['depois_dedup']:,} → "
-                f"Salvos: {result['inseridos']:,}"
-            )
+            st.session_state['pipeline_success'] = f"**{result['arquivo']}** - Linhas: {result['linhas_raw']:,} - Dedup: {result['depois_dedup']:,} - Salvos: {result['inseridos']:,}"
             st.cache_data.clear()
             st.rerun()
         except Exception as e:
             import traceback
             spinner_placeholder.empty()
-            st.session_state['pipeline_errors'] = [
-                f"Erro: {e}",
-                traceback.format_exc()
-            ]
+            st.session_state['pipeline_errors'] = [f"Erro: {e}", traceback.format_exc()]
             st.rerun()
     st.markdown("---")
-    st.caption("Cada planilha que você sobe passa pelo pipeline completo "
-               "(limpeza → normalização → deduplicação) e é adicionada ao banco.")
+    st.caption("Cada planilha passa pelo pipeline completo (limpeza - normalizacao - deduplicacao) e e adicionada ao banco.")
     if count_leads() > 0:
         st.markdown("---")
-        with st.expander("⚠️ Manutenção"):
-            if st.button("🗑️ LIMPAR BANCO", use_container_width=True):
+        with st.expander("Manutencao"):
+            if st.button("LIMPAR BANCO", use_container_width=True):
                 sb = get_supabase()
                 with st.spinner("Limpando..."):
                     try:
@@ -625,42 +502,34 @@ with st.sidebar:
                     except Exception as e:
                         st.error(f"Erro: {e}")
 
-
-st.markdown("# 🔍 Buscador de Talentos")
+st.markdown("# Buscador de Talentos")
 
 if st.session_state.get('pipeline_errors'):
-    st.error("⚠️ Erros durante o upload:")
+    st.error("Erros durante o upload:")
     for err in st.session_state['pipeline_errors'][:5]:
         st.code(err, language="text")
-    if st.button("✕ Fechar erros"):
+    if st.button("Fechar erros"):
         del st.session_state['pipeline_errors']
         st.rerun()
 
 if st.session_state.get('pipeline_success'):
     st.success(st.session_state['pipeline_success'])
-    if st.button("✕ Fechar"):
+    if st.button("Fechar"):
         del st.session_state['pipeline_success']
         st.rerun()
 
 total = count_leads()
 if total == 0:
-    st.markdown("""
-    <div style="text-align: center; padding: 4rem 2rem;">
-        <h2 style="color: var(--color-text-tertiary);">Nenhum lead no banco</h2>
-        <p style="color: var(--color-text-secondary); font-size: 1.1rem;">
-            Use a barra lateral para subir sua primeira planilha de scraps.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown('<div style="text-align:center;padding:4rem 2rem;"><h2 style="color:#888;">Nenhum lead no banco</h2><p style="color:#aaa;">Use a barra lateral para subir sua primeira planilha.</p></div>', unsafe_allow_html=True)
     st.stop()
 
 col1, col2, col3 = st.columns(3)
 with col1:
     st.markdown(f'<div class="metric-card"><h3>Total leads</h3><p>{total:,}</p></div>', unsafe_allow_html=True)
 with col2:
-    st.markdown(f'<div class="metric-card"><h3>Banco</h3><p>Supabase</p></div>', unsafe_allow_html=True)
+    st.markdown('<div class="metric-card"><h3>Banco</h3><p>Supabase</p></div>', unsafe_allow_html=True)
 with col3:
-    st.markdown(f'<div class="metric-card"><h3>Status</h3><p>Online</p></div>', unsafe_allow_html=True)
+    st.markdown('<div class="metric-card"><h3>Status</h3><p>Online</p></div>', unsafe_allow_html=True)
 
 st.markdown("")
 
@@ -670,7 +539,7 @@ def cached_filter_options():
 
 options = cached_filter_options()
 
-with st.expander("🎛️ Filtros", expanded=True):
+with st.expander("Filtros", expanded=True):
     fc1, fc2, fc3 = st.columns(3)
     with fc1:
         fil_senioridade = st.multiselect("Senioridade", options.get('senioridade_normalizada', []))
@@ -680,13 +549,12 @@ with st.expander("🎛️ Filtros", expanded=True):
         fil_segmento = st.multiselect("Segmento empresa", options.get('segmento_empresa', []))
     fc4, fc5 = st.columns(2)
     with fc4:
-        fil_mercado = st.multiselect("Área de mercado", options.get('segmento_mercado', []))
+        fil_mercado = st.multiselect("Area de mercado", options.get('segmento_mercado', []))
     with fc5:
-        ESTADOS_BR = sorted(['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT',
-                             'PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'])
+        ESTADOS_BR = sorted(['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'])
         fil_estados = st.multiselect("Estado (UF)", ESTADOS_BR)
 
-consulta = st.text_input("🔎 Busca livre", placeholder='Ex: "head de produto SP" ou "engenheiro sênior"')
+consulta = st.text_input("Busca livre", placeholder='Ex: head de produto SP ou engenheiro senior')
 
 filters = {}
 if fil_senioridade: filters['senioridade_normalizada'] = fil_senioridade
@@ -695,15 +563,14 @@ if fil_segmento: filters['segmento_empresa'] = fil_segmento
 if fil_mercado: filters['segmento_mercado'] = fil_mercado
 if fil_estados: filters['estados'] = fil_estados
 
-has_filters = bool(filters) or bool(consulta.strip())
-if not has_filters:
+if not (bool(filters) or bool(consulta.strip())):
     st.info("Use os filtros ou a busca para encontrar leads.")
     st.stop()
 
 with st.spinner("Buscando..."):
     results = search_leads(query=consulta, filters=filters, limit=50)
 
-st.markdown(f"**{len(results)} resultados** (mostrando até 50)")
+st.markdown(f"**{len(results)} resultados** (mostrando ate 50)")
 
 if results:
     df_export = pd.DataFrame(results)
@@ -711,16 +578,16 @@ if results:
     csv_data = df_export[cols_export].to_csv(index=False).encode('utf-8-sig')
     ecol1, ecol2, _ = st.columns([1, 1, 4])
     with ecol1:
-        st.download_button("📥 CSV", csv_data, "resultados.csv", "text/csv")
+        st.download_button("CSV", csv_data, "resultados.csv", "text/csv")
     with ecol2:
         emails = [r.get('linkedin_email') for r in results if r.get('linkedin_email') and '@' in str(r.get('linkedin_email', ''))]
         if emails:
-            st.download_button("📧 Emails", '\n'.join(emails), "emails.txt", "text/plain")
+            st.download_button("Emails", '\n'.join(emails), "emails.txt", "text/plain")
 
 for r in results:
-    nome = r.get('name') or '—'
-    cargo = r.get('cargo') or '—'
-    company = r.get('company_name') or '—'
+    nome = r.get('name') or '-'
+    cargo = r.get('cargo') or '-'
+    company = r.get('company_name') or '-'
     sen = r.get('senioridade_normalizada') or ''
     expertise = r.get('expertise') or ''
     cidade = r.get('cidade') or ''
@@ -738,17 +605,9 @@ for r in results:
         tags_html += f'<span class="lead-tag location">{" / ".join(loc_parts)}</span>'
     contact_html = ''
     if email and '@' in email:
-        contact_html += f'<span style="color:var(--color-text-secondary); font-size:0.8rem;">📧 {email}</span> '
+        contact_html += f'<span style="color:#888;font-size:0.8rem;">email: {email}</span> '
     if tel:
-        contact_html += f'<span style="color:var(--color-text-secondary); font-size:0.8rem;">📞 {tel}</span> '
+        contact_html += f'<span style="color:#888;font-size:0.8rem;">tel: {tel}</span> '
     if li_url and 'linkedin' in li_url.lower():
-        contact_html += f'<a href="{li_url}" target="_blank" style="color:var(--color-text-info); font-size:0.8rem;">🔗 LinkedIn</a>'
-    st.markdown(f"""
-    <div class="lead-card">
-        <div class="lead-name">{nome}</div>
-        <div class="lead-cargo">{cargo}</div>
-        <div class="lead-company">{company}</div>
-        <div class="lead-tags">{tags_html}</div>
-        <div style="margin-top: 0.4rem;">{contact_html}</div>
-    </div>
-    """, unsafe_allow_html=True)
+        contact_html += f'<a href="{li_url}" target="_blank" style="color:#3b82f6;font-size:0.8rem;">LinkedIn</a>'
+    st.markdown(f'<div class="lead-card"><div class="lead-name">{nome}</div><div class="lead-cargo">{cargo}</div><div class="lead-company">{company}</div><div class="lead-tags">{tags_html}</div><div style="margin-top:0.4rem;">{contact_html}</div></div>', unsafe_allow_html=True)
