@@ -6,184 +6,184 @@ import hashlib
 from supabase import create_client
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CONFIGURAÇÕES INICIAIS
+# CONFIGURAÇÕES E INTELIGÊNCIA DE MAPEAMENTO
 # ══════════════════════════════════════════════════════════════════════════════
-st.set_page_config(page_title="Buscador de Talentos", page_icon="🔍", layout="wide")
+st.set_page_config(page_title="Dataiku Centralizador", page_icon="🚀", layout="wide")
 
 TABLE = "leads"
-BATCH_SIZE = 500
+BATCH_SIZE = 600
 
-# Mapeia as colunas da sua planilha para as colunas do banco de dados
-COL_MAP = {
-    'name': 'name', 
-    'Cargo': 'cargo', 
-    'occupation': 'occupation',
-    'job_title': 'job_title', 
-    'company_name': 'company_name',
-    'Expertise': 'expertise', 
-    'Nivel_Senioridade': 'nivel_senioridade',
-    'senioridade_normalizada': 'senioridade_normalizada',
-    'Segmento_Empresa': 'segmento_empresa', 
-    'segmento_mercado': 'segmento_mercado',
-    'linkedinEmail': 'linkedin_email', 
-    'DDD_Telefone': 'ddd_telefone',
-    'linkedinUrl': 'linkedin_url', 
-    'Cidade': 'cidade', 
-    'UF': 'uf',
-    'Estado': 'estado', 
-    'Pais': 'pais', 
-    'Publico_Alvo_Ads': 'publico_alvo_ads',
-    'Recrutador?': 'recrutador', 
-    'salesNavigatorId': 'sales_navigator_id',
-    'senioridade_aproximada': 'senioridade_aproximada',
+# Palavras-chave para identificar colunas automaticamente, não importa o nome
+AUTO_MAP_KEYWORDS = {
+    'name': ['nome', 'name', 'full name', 'lead', 'contato'],
+    'linkedin_email': ['email', 'e-mail', 'mail', 'linkedinemail'],
+    'ddd_telefone': ['tel', 'phone', 'celular', 'whatsapp', 'mobile', 'ddd'],
+    'linkedin_url': ['url', 'linkedin', 'link', 'perfil'],
+    'cargo': ['cargo', 'job', 'role', 'occupation', 'titulo', 'title'],
+    'company_name': ['empresa', 'company', 'organization', 'trabalho'],
+    'nivel_senioridade': ['senioridade', 'seniority', 'nivel', 'level']
+}
+
+REGRAS = {
+    'areas': {
+        'engenharia de software': 'Tech/Dev', 'desenvolvedor': 'Tech/Dev', 'dev': 'Tech/Dev',
+        'vendas': 'Comercial/Vendas', 'comercial': 'Comercial/Vendas', 'sales': 'Comercial/Vendas',
+        'rh': 'Recrutamento/RH', 'recrutador': 'Recrutamento/RH', 'talent': 'Recrutamento/RH'
+    },
+    'salarios': {
+        'Tech/Dev': {'Senior': 12000, 'Pleno': 8500, 'Junior': 4500},
+        'Comercial/Vendas': {'Senior': 10000, 'Pleno': 6500, 'Junior': 3500},
+        'default': {'Senior': 9000, 'Pleno': 6000, 'Junior': 4500}
+    }
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FUNÇÕES DE BANCO DE DADOS
+# MOTOR DE CONEXÃO
 # ══════════════════════════════════════════════════════════════════════════════
 @st.cache_resource
 def get_supabase():
-    url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"]
-    return create_client(url, key)
+    return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
 def count_leads():
-    try:
-        sb = get_supabase()
-        result = sb.table(TABLE).select("id", count="exact").limit(1).execute()
-        return result.count or 0
-    except:
-        return 0
-
-def get_filter_options():
-    sb = get_supabase()
-    options = {}
-    cols = ['senioridade_normalizada', 'expertise', 'segmento_empresa']
-    for col in cols:
-        try:
-            # Tenta usar a função RPC que criamos no SQL Editor
-            result = sb.rpc("get_distinct_values", {"col_name": col}).execute()
-            if result.data:
-                options[col] = sorted([r['val'] for r in result.data if r['val']])
-            else:
-                options[col] = []
-        except:
-            options[col] = []
-    return options
+    try: return get_supabase().table(TABLE).select("id", count="exact").limit(1).execute().count or 0
+    except: return 0
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PROCESSAMENTO DE DADOS (PIPELINE)
+# LÓGICA DE TRATAMENTO "UNIVERSAL"
 # ══════════════════════════════════════════════════════════════════════════════
-def extrair_slug(url):
-    if pd.isna(url) or not isinstance(url, str): return None
-    url = url.strip().lower().split('?')[0].rstrip('/')
-    if '/in/' in url:
-        return url.split('/in/')[-1]
-    return hashlib.md5(url.encode()).hexdigest()
 
-def pipeline_e_salva(uploaded_file, progress_cb):
-    sb = get_supabase()
-    progress_cb(10, "Lendo arquivo...")
+def identificar_colunas(df_cols):
+    """Mapeia colunas da planilha bagunçada para o nosso padrão"""
+    mapping = {}
+    for padrao, keywords in AUTO_MAP_KEYWORDS.items():
+        for col in df_cols:
+            if any(k in col.lower() for k in keywords):
+                mapping[padrao] = col
+                break
+    return mapping
+
+def normalizar_texto(txt):
+    if pd.isna(txt): return None
+    return str(txt).strip()
+
+def extrair_slug(url, email, nome):
+    """Cria um ID Único (Slug) baseado no que estiver disponível para evitar duplicatas"""
+    if pd.notna(url) and 'linkedin.com/in/' in str(url):
+        return str(url).split('/in/')[-1].split('?')[0].rstrip('/')
+    if pd.notna(email):
+        return hashlib.md5(str(email).lower().strip().encode()).hexdigest()
+    return hashlib.md5(str(nome).lower().strip().encode()).hexdigest()
+
+def aplicar_inteligencia_dataiku(row):
+    """Aplica as receitas de Área, Senioridade e Salário"""
+    # 1. Senioridade
+    cargo = str(row.get('cargo', '')).lower()
+    nivel = str(row.get('nivel_senioridade', '')).lower()
+    texto_busca = cargo + " " + nivel
     
-    if uploaded_file.name.endswith('.csv'):
-        df = pd.read_csv(uploaded_file, dtype=str)
-    else:
-        df = pd.read_excel(uploaded_file, dtype=str)
+    if 'senior' in texto_busca or 'sênior' in texto_busca or 'esp' in texto_busca: sen = 'Senior'
+    elif 'pleno' in texto_busca: sen = 'Pleno'
+    elif 'jr' in texto_busca or 'junior' in texto_busca or 'estagi' in texto_busca: sen = 'Junior'
+    else: sen = 'Nao Identificado'
 
-    progress_cb(30, "Limpando e deduplicando...")
-    # Criar slug para evitar duplicatas
-    df['linkedin_slug'] = df['linkedinUrl'].apply(extrair_slug)
-    df = df.drop_duplicates(subset=['linkedin_slug'])
+    # 2. Área
+    area = "Outros/Nao Identificado"
+    for termo, a in REGRAS['areas'].items():
+        if termo in texto_busca:
+            area = a
+            break
+            
+    # 3. Financeiro
+    tabela = REGRAS['salarios'].get(area, REGRAS['salarios']['default'])
+    salario = tabela.get(sen, 4500)
+    
+    return pd.Series([sen, area, salario, salario * 13.3])
 
-    # Mapeamento de colunas
-    final_records = []
-    for _, row in df.iterrows():
-        record = {}
-        for csv_col, db_col in COL_MAP.items():
-            val = row.get(csv_col)
-            record[db_col] = val if pd.notna(val) and val != 'nan' else None
-        
-        record['linkedin_slug'] = row.get('linkedin_slug')
-        final_records.append(record)
+# ══════════════════════════════════════════════════════════════════════════════
+# PIPELINE DE EXECUÇÃO
+# ══════════════════════════════════════════════════════════════════════════════
 
-    progress_cb(60, f"Enviando {len(final_records)} leads...")
+def processar_planilha_universal(file, progress_cb):
+    sb = get_supabase()
+    progress_cb(10, "📖 Lendo arquivo...")
+    
+    # Suporta CSV (com vírgula ou tab) e Excel
+    try:
+        df = pd.read_csv(file, sep=None, engine='python', dtype=str)
+    except:
+        df = pd.read_excel(file, dtype=str)
+
+    progress_cb(25, "🔍 Identificando colunas automaticamente...")
+    mapa_detectado = identificar_colunas(df.columns)
+    
+    # Criar novo DF padronizado
+    df_clean = pd.DataFrame()
+    for padrao, col_original in mapa_detectado.items():
+        df_clean[padrao] = df[col_original].apply(normalizar_texto)
+
+    # Preencher colunas que faltarem com None
+    for col in AUTO_MAP_KEYWORDS.keys():
+        if col not in df_clean.columns: df_clean[col] = None
+
+    progress_cb(40, "🧠 Aplicando Inteligência (Receitas Dataiku)...")
+    df_clean[['senioridade_normalizada', 'area_identificada', 'salario_estimado', 'custo_total']] = df_clean.apply(aplicar_inteligencia_dataiku, axis=1)
+    
+    progress_cb(55, "🛡️ Removendo duplicatas...")
+    df_clean['linkedin_slug'] = df_clean.apply(lambda r: extrair_slug(r['linkedin_url'], r['linkedin_email'], r['name']), axis=1)
+    df_clean = df_clean.drop_duplicates(subset=['linkedin_slug'])
+
+    # Conversão para dicionário para o Supabase
+    records = df_clean.to_dict(orient='records')
+    for r in records:
+        # Garantir que números sejam floats e nans sejam Nones
+        r['salario_estimado'] = float(r['salario_estimado'])
+        r['custo_total'] = float(r['custo_total'])
+        for k, v in r.items():
+            if pd.isna(v): r[k] = None
+
+    progress_cb(70, f"🚀 Subindo {len(records)} leads para o banco central...")
     
     sucesso = 0
-    for i in range(0, len(final_records), BATCH_SIZE):
-        batch = final_records[i:i+BATCH_SIZE]
+    for i in range(0, len(records), BATCH_SIZE):
+        batch = records[i:i+BATCH_SIZE]
         try:
-            sb.table(TABLE).insert(batch).execute()
+            sb.table(TABLE).upsert(batch, on_conflict='linkedin_slug').execute()
             sucesso += len(batch)
-        except Exception as e:
-            # Se falhar o lote (ex: uma duplicata), tenta um por um
+        except:
             for r in batch:
-                try:
-                    sb.table(TABLE).insert(r).execute()
-                    sucesso += 1
-                except:
-                    continue
-        
-        pct = 60 + int((i / len(final_records)) * 40)
-        progress_cb(pct, f"Enviando... {sucesso} processados")
+                try: sb.table(TABLE).upsert(r, on_conflict='linkedin_slug').execute(); sucesso += 1
+                except: pass
+        progress_cb(70 + int((i/len(records))*30), f"Sincronizando... {sucesso} leads")
 
     return sucesso
 
 # ══════════════════════════════════════════════════════════════════════════════
-# INTERFACE STREAMLIT
+# INTERFACE
 # ══════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
-    st.title("📤 Importação")
+    st.title("📥 Centralizador")
+    st.info("Jogue qualquer planilha. O sistema tentará identificar Nome, Email, Tel e LinkedIn sozinho.")
     
-    qtd = count_leads()
-    st.metric("Total no Banco", f"{qtd:,}")
+    st.metric("Base Central", f"{count_leads():,}")
     
-    st.markdown("---")
-    file = st.file_uploader("Suba sua planilha (CSV ou XLSX)", type=['csv', 'xlsx'])
-    
-    if file and st.button("🚀 Iniciar Processamento", use_container_width=True):
-        bar = st.progress(0)
-        status = st.empty()
-        
-        def update(p, m):
-            bar.progress(p/100)
-            status.text(m)
-            
+    file = st.file_uploader("Upload", type=['csv', 'xlsx'])
+    if file and st.button("🚀 Processar e Unificar", use_container_width=True):
+        bar = st.progress(0); msg = st.empty()
+        def up(p, m): bar.progress(p/100); msg.text(m)
         try:
-            total = pipeline_e_salva(file, update)
-            st.success(f"Finalizado! {total} leads processados/atualizados.")
+            total = processar_planilha_universal(file, up)
+            st.success(f"Finalizado! {total} leads adicionados/atualizados.")
             st.cache_data.clear()
-        except Exception as e:
-            st.error(f"Erro crítico: {e}")
+        except Exception as e: st.error(f"Erro no processamento: {e}")
 
-# ÁREA PRINCIPAL
-st.title("🔍 Buscador de Talentos")
+st.title("🔍 Busca na Base Unificada")
+busca = st.text_input("Busca rápida (Nome, Cargo, Email ou Empresa)")
 
-opts = get_filter_options()
-
-c1, c2 = st.columns(2)
-with c1:
-    f_sen = st.multiselect("Senioridade", opts.get('senioridade_normalizada', []))
-with c2:
-    f_exp = st.multiselect("Expertise", opts.get('expertise', []))
-
-busca = st.text_input("Buscar por Nome, Cargo ou Empresa")
-
-if st.button("Buscar"):
+if busca:
     sb = get_supabase()
-    query = sb.table(TABLE).select("*")
-    
-    if f_sen: query = query.in_("senioridade_normalizada", f_sen)
-    if f_exp: query = query.in_("expertise", f_exp)
-    if busca: query = query.or_(f"name.ilike.%{busca}%,cargo.ilike.%{busca}%,company_name.ilike.%{busca}%")
-    
-    res = query.limit(100).execute()
+    res = sb.table(TABLE).select("*").or_(f"name.ilike.%{busca}%,cargo.ilike.%{busca}%,company_name.ilike.%{busca}%,linkedin_email.ilike.%{busca}%").limit(100).execute()
     
     if res.data:
-        st.write(f"Encontrados {len(res.data)} leads:")
-        for r in res.data:
-            with st.expander(f"{r['name']} - {r['cargo']} @ {r['company_name']}"):
-                st.write(f"**Email:** {r['linkedin_email']}")
-                st.write(f"**Local:** {r['cidade']} / {r['uf']}")
-                st.write(f"**LinkedIn:** {r['linkedin_url']}")
+        st.dataframe(pd.DataFrame(res.data)[['name', 'cargo', 'company_name', 'area_identificada', 'senioridade_normalizada', 'salario_estimado']], use_container_width=True)
     else:
-        st.warning("Nenhum lead encontrado com esses filtros.")
+        st.warning("Nada encontrado.")
