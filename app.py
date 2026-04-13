@@ -198,19 +198,23 @@ def insert_leads_batch(records, progress_callback=None):
                 progress_callback(min(pct, 99), f"📤 Enviando... {inserted:,}/{total:,}")
         except Exception as e:
             err_msg = str(e)
-            # Se for erro de duplicata, ignora e continua
             if 'duplicate' in err_msg.lower() or '23505' in err_msg:
-                # Tenta um por um pra salvar os que não são duplicata
                 for record in batch:
                     try:
                         sb.table(TABLE).insert(record).execute()
                         inserted += 1
                     except Exception:
-                        pass  # Duplicata individual, ignora
+                        pass
             else:
-                errors.append(f"Lote {i//BATCH_SIZE + 1}: {err_msg[:200]}")
+                errors.append(f"Lote {i//BATCH_SIZE + 1}: {err_msg[:500]}")
+                # Mostra o primeiro registro do lote que falhou pra debug
+                if len(errors) == 1:
+                    sample = {k: str(v)[:50] for k, v in batch[0].items() if v is not None}
+                    errors.append(f"Amostra do registro: {sample}")
+                if len(errors) >= 6:
+                    break  # Para se muitos erros
     if errors:
-        for err in errors[:3]:
+        for err in errors[:5]:
             st.warning(err)
     return inserted
 
@@ -684,7 +688,9 @@ with st.sidebar:
             st.cache_data.clear()
             st.rerun()
         except Exception as e:
+            import traceback
             st.error(f"Erro: {e}")
+            st.code(traceback.format_exc(), language="text")
 
     st.markdown("---")
     st.caption("Cada planilha que você sobe passa pelo pipeline completo "
