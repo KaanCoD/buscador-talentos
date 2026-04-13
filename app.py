@@ -600,12 +600,18 @@ def pipeline_e_salva(uploaded_file, progress_callback=None):
         slugs.append(slug)
     df_out['linkedin_slug'] = slugs
 
-    # Limpar valores None/nan
+    # Limpar valores None/nan e converter tipos
     records = df_out.to_dict(orient='records')
     for r in records:
-        for k, v in r.items():
+        for k, v in list(r.items()):
             if v in ('nan', 'None', '', 'none', 'NaN'):
                 r[k] = None
+        # Fix: senioridade_aproximada precisa ser boolean, não string
+        sa = r.get('senioridade_aproximada')
+        if sa is not None:
+            r['senioridade_aproximada'] = str(sa).lower() in ('true', '1', 'yes')
+        else:
+            r['senioridade_aproximada'] = False
 
     # 7. Inserir no Supabase
     inserted = insert_leads_batch(records, progress_callback)
@@ -672,13 +678,33 @@ with st.sidebar:
     if uploaded and st.button("🚀 Processar e Salvar", type="primary", use_container_width=True):
         progress_bar = st.progress(0)
         status_text = st.empty()
+        spinner_placeholder = st.empty()
+
+        # Flag de cancelamento via session_state
+        if 'cancelar_upload' not in st.session_state:
+            st.session_state.cancelar_upload = False
+
+        stop_btn = st.button("⏹️ Parar processamento", use_container_width=True)
+        if stop_btn:
+            st.session_state.cancelar_upload = True
 
         def update_progress(pct, msg):
             progress_bar.progress(pct / 100)
-            status_text.text(msg)
+            spinner_placeholder.markdown(
+                f'<div style="display:flex;align-items:center;gap:8px;">'
+                f'<div style="width:20px;height:20px;border:3px solid var(--color-border-tertiary);'
+                f'border-top:3px solid var(--color-text-info);border-radius:50%;'
+                f'animation:spin 1s linear infinite;"></div>'
+                f'<span style="font-size:0.85rem;color:var(--color-text-secondary);">{msg}</span>'
+                f'</div>'
+                f'<style>@keyframes spin {{0%{{transform:rotate(0deg)}}100%{{transform:rotate(360deg)}}}}</style>',
+                unsafe_allow_html=True
+            )
+            status_text.text("")
 
         try:
             result = pipeline_e_salva(uploaded, update_progress)
+            spinner_placeholder.empty()
             st.success(
                 f"**{result['arquivo']}**\n\n"
                 f"Linhas no arquivo: {result['linhas_raw']:,}\n\n"
@@ -689,6 +715,7 @@ with st.sidebar:
             st.rerun()
         except Exception as e:
             import traceback
+            spinner_placeholder.empty()
             st.error(f"Erro: {e}")
             st.code(traceback.format_exc(), language="text")
 
