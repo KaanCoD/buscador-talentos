@@ -1,4 +1,4 @@
-python
+
 """
 🔍 Buscador de Talentos — Streamlit + Supabase
 Pipeline: Upload CSV/XLSX → Limpeza → Normalização → Deduplicação → Supabase → Busca
