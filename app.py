@@ -5,7 +5,7 @@ import time
 from supabase import create_client
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 1. DESIGN SYSTEM & CSS
+# 1. CONFIG & CSS
 # ══════════════════════════════════════════════════════════════════════════════
 st.set_page_config(page_title="Talent Analytics Pro", page_icon="💎", layout="wide")
 
@@ -26,76 +26,120 @@ st.markdown("""
         border: 1px solid #E2E8F0;
     }
 
+    /* ── CARD ── */
     .lead-card {
         background: white;
         border-radius: 12px;
-        padding: 24px;
-        margin-bottom: 20px;
+        padding: 20px 24px;
         border: 1px solid #E2E8F0;
         border-left: 6px solid #ffca28;
-        transition: all 0.3s ease;
         box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-    }
-    .lead-card:hover {
-        border-color: #4F46E5;
-        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
-        transform: translateY(-2px);
-    }
-
-    .lead-nome {
-        font-size: 1.3rem;
-        font-weight: 800;
-        color: #0F172A;
-    }
-    .lead-sub {
-        color: #64748B;
-        font-size: 1rem;
-        margin-bottom: 12px;
-    }
-    .lead-empresa {
-        color: #4F46E5;
-        font-weight: 700;
-    }
-    .lead-salario {
-        color: #059669;
-        font-size: 1.3rem;
-        font-weight: 800;
-        white-space: nowrap;
     }
     .lead-header {
         display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
+        align-items: center;
+        gap: 16px;
     }
-    .lead-tags {
+    .lead-avatar {
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 2px solid #E2E8F0;
+        flex-shrink: 0;
+    }
+    .lead-avatar-placeholder {
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         display: flex;
-        gap: 8px;
-        margin-top: 8px;
-        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 1.4rem;
+        font-weight: 800;
+        flex-shrink: 0;
     }
-    .lead-contato {
-        margin-top: 18px;
-        padding-top: 18px;
-        border-top: 1px solid #F1F5F9;
+    .lead-info { flex: 1; min-width: 0; }
+    .lead-nome {
+        font-size: 1.15rem;
+        font-weight: 800;
+        color: #0F172A;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .lead-cargo {
         color: #475569;
-        font-size: 0.85rem;
-        display: flex;
-        gap: 20px;
-        flex-wrap: wrap;
+        font-size: 0.88rem;
+        margin-top: 2px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .lead-empresa { color: #4F46E5; font-weight: 700; }
+    .lead-salario {
+        color: #059669;
+        font-size: 1.1rem;
+        font-weight: 800;
+        white-space: nowrap;
+        margin-left: auto;
     }
 
+    /* Tags */
+    .lead-tags { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
     .tag {
-        padding: 5px 14px;
+        padding: 4px 12px;
         border-radius: 20px;
-        font-size: 11px;
+        font-size: 10px;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.5px;
         display: inline-block;
     }
-    .tag-blue  { background: #E0E7FF; color: #4338CA; }
-    .tag-amber { background: #FFF7ED; color: #9A3412; }
-    .tag-slate { background: #F1F5F9; color: #475569; }
+    .tag-blue   { background: #E0E7FF; color: #4338CA; }
+    .tag-amber  { background: #FFF7ED; color: #9A3412; }
+    .tag-slate  { background: #F1F5F9; color: #475569; }
+    .tag-green  { background: #DCFCE7; color: #166534; }
+    .tag-red    { background: #FEE2E2; color: #991B1B; }
+    .tag-purple { background: #F3E8FF; color: #6B21A8; }
+
+    /* Headline */
+    .lead-headline {
+        margin-top: 12px;
+        padding: 10px 14px;
+        background: #F8FAFC;
+        border-radius: 8px;
+        color: #334155;
+        font-size: 0.83rem;
+        line-height: 1.5;
+        border-left: 3px solid #CBD5E1;
+        font-style: italic;
+    }
+
+    /* Ficha tecnica */
+    .detail-item {
+        background: #F8FAFC;
+        border-radius: 8px;
+        padding: 10px 14px;
+        border: 1px solid #E2E8F0;
+        height: 100%;
+    }
+    .detail-label {
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: #94A3B8;
+        margin-bottom: 3px;
+    }
+    .detail-value {
+        font-size: 0.88rem;
+        color: #1E293B;
+        font-weight: 600;
+        word-break: break-all;
+    }
 
     .empty-search {
         text-align: center;
@@ -110,7 +154,7 @@ st.markdown("""
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 2. FUNÇÕES DE DADOS & SEGURANÇA
+# 2. FUNÇÕES UTILITÁRIAS
 # ══════════════════════════════════════════════════════════════════════════════
 @st.cache_resource
 def get_supabase():
@@ -126,9 +170,18 @@ def clean_val(val, default=""):
     except Exception:
         pass
     s = str(val).strip()
-    if s.lower() in ["none", "nan", "nao identificado", ""]:
+    if s.lower() in ["none", "nan", "nao identificado", "não identificado", ""]:
         return default
     return s
+
+
+def interesse_tag(val):
+    v = str(val).lower()
+    if "not_interested" in v:
+        return '<span class="tag tag-red">❌ Não Interessado</span>'
+    if "interested" in v:
+        return '<span class="tag tag-green">✅ Interessado</span>'
+    return ""
 
 
 def safe_delete_all():
@@ -157,17 +210,38 @@ def safe_delete_all():
         st.error(f"Erro na exclusão: {e}")
 
 
-def render_card(r):
-    """Monta e renderiza um card de lead sem quebrar o HTML."""
-    nome       = clean_val(r.get("name"), "Candidato")
-    cargo      = clean_val(r.get("cargo"), "Cargo não informado")
-    empresa    = clean_val(r.get("company_name"), "Empresa Privada")
-    area       = clean_val(r.get("area_identificada"))
-    senioridade= clean_val(r.get("senioridade_normalizada"))
-    cidade     = clean_val(r.get("cidade"), "Brasil")
-    email      = clean_val(r.get("linkedin_email"))
-    tel        = clean_val(r.get("ddd_telefone"))
-    url_li     = r.get("linkedin_url")
+def detail_box(label, value):
+    """Renderiza uma caixa de detalhe da ficha técnica."""
+    v = value if value else "—"
+    st.markdown(
+        '<div class="detail-item">'
+        f'<div class="detail-label">{label}</div>'
+        f'<div class="detail-value">{v}</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 3. RENDER CARD
+# ══════════════════════════════════════════════════════════════════════════════
+def render_card(r, idx):
+    # Extrai todos os campos
+    nome        = clean_val(r.get("name"), "Candidato")
+    cargo       = clean_val(r.get("cargo"), "Cargo não informado")
+    empresa     = clean_val(r.get("company_name"), "Empresa Privada")
+    area        = clean_val(r.get("area_identificada"))
+    senioridade = clean_val(r.get("senioridade_normalizada"))
+    cidade      = clean_val(r.get("cidade"), "Brasil")
+    estado      = clean_val(r.get("estado"))
+    email       = clean_val(r.get("linkedin_email"))
+    tel         = clean_val(r.get("ddd_telefone"))
+    url_li      = clean_val(r.get("linkedin_url"))
+    foto        = clean_val(r.get("profile_photo_url"))
+    headline    = clean_val(r.get("linkedin_headline"))
+    interesse   = clean_val(r.get("lead_interest_status"))
+    sexo        = clean_val(r.get("gender"))
+    segmento    = clean_val(r.get("segmento_empresa"))
 
     try:
         salario = float(r.get("salario_estimado") or 0)
@@ -175,61 +249,103 @@ def render_card(r):
         salario = 0.0
 
     salario_txt = f"R$ {salario:,.2f}" if salario > 0 else "Sob Consulta"
+    inicial     = nome[0].upper() if nome else "?"
+    local_txt   = f"{cidade}, {estado}" if estado else cidade
 
-    # Tags — montadas antes para não misturar aspas no HTML principal
-    tags_html = ""
+    # Avatar
+    if foto and foto.startswith("http"):
+        avatar_html = f'<img class="lead-avatar" src="{foto}">'
+    else:
+        avatar_html = f'<div class="lead-avatar-placeholder">{inicial}</div>'
+
+    # Tags
+    tags = ""
     if area:
-        tags_html += f'<span class="tag tag-blue">📁 {area}</span>'
+        tags += f'<span class="tag tag-blue">📁 {area}</span>'
     if senioridade:
-        tags_html += f'<span class="tag tag-amber">⚡ {senioridade}</span>'
-    tags_html += f'<span class="tag tag-slate">📍 {cidade}</span>'
+        tags += f'<span class="tag tag-amber">⚡ {senioridade}</span>'
+    tags += f'<span class="tag tag-slate">📍 {local_txt}</span>'
+    if segmento:
+        tags += f'<span class="tag tag-purple">🏢 {segmento}</span>'
+    tags += interesse_tag(interesse)
 
-    # Contato
-    contato_html = ""
-    if email:
-        contato_html += f"<span>📧 {email}</span>"
-    if tel:
-        contato_html += f"<span>📞 {tel}</span>"
+    # Headline
+    headline_html = ""
+    if headline:
+        headline_html = f'<div class="lead-headline">"{headline}"</div>'
 
-    # Card completo — sem f-string aninhado com aspas conflitantes
-    card = (
+    # Card
+    st.markdown(
         '<div class="lead-card">'
             '<div class="lead-header">'
-                '<div>'
+                + avatar_html +
+                '<div class="lead-info">'
                     f'<div class="lead-nome">{nome}</div>'
-                    '<div class="lead-sub">'
+                    '<div class="lead-cargo">'
                         f'{cargo} &bull; <span class="lead-empresa">{empresa}</span>'
                     '</div>'
                 '</div>'
                 f'<div class="lead-salario">{salario_txt}</div>'
             '</div>'
-            f'<div class="lead-tags">{tags_html}</div>'
-            f'<div class="lead-contato">{contato_html}</div>'
-        '</div>'
+            f'<div class="lead-tags">{tags}</div>'
+            + headline_html +
+        '</div>',
+        unsafe_allow_html=True,
     )
 
-    st.markdown(card, unsafe_allow_html=True)
+    # Expander - ficha técnica completa
+    with st.expander("🔍 Ver ficha técnica completa"):
+        st.markdown("**Contato**")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            detail_box("📧 E-mail", email)
+        with c2:
+            detail_box("📞 Telefone", tel)
+        with c3:
+            detail_box("⚧ Gênero", sexo.capitalize() if sexo else "")
 
-    if url_li:
-        primeiro_nome = nome.split()[0]
-        st.link_button(
-            f"🔥 Abrir perfil de {primeiro_nome} no LinkedIn",
-            url_li,
-            use_container_width=True,
-            type="secondary",
-        )
-        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("**Perfil Profissional**")
+        c4, c5, c6 = st.columns(3)
+        with c4:
+            detail_box("🏢 Segmento", segmento)
+        with c5:
+            detail_box("📊 Senioridade", senioridade)
+        with c6:
+            detail_box("📍 Localização", local_txt)
+
+        if headline:
+            st.markdown("**Headline LinkedIn**")
+            st.markdown(
+                '<div class="detail-item">'
+                '<div class="detail-value" style="font-weight:400;font-style:italic;">'
+                f'"{headline}"'
+                '</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
+        st.markdown("")
+        if url_li:
+            primeiro_nome = nome.split()[0]
+            st.link_button(
+                f"🔥 Abrir perfil de {primeiro_nome} no LinkedIn",
+                url_li,
+                use_container_width=True,
+                type="secondary",
+            )
+
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 3. SIDEBAR
+# 4. SIDEBAR
 # ══════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/1055/1055644.png", width=70)
     st.title("Dataiku Engine")
     st.divider()
 
-    busca = st.text_input("🔍 O que você procura?", placeholder="Digite um cargo ou nome...")
+    busca  = st.text_input("🔍 O que você procura?", placeholder="Digite um cargo ou nome...")
     f_area = st.selectbox("Área", ["Todas", "Tech/Dev", "Vendas", "RH", "Executivo"])
     f_sen  = st.selectbox("Nível", ["Todas", "Senior", "Pleno", "Junior"])
 
@@ -245,25 +361,25 @@ with st.sidebar:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 4. DASHBOARD & MÉTRICAS
+# 5. MÉTRICAS
 # ══════════════════════════════════════════════════════════════════════════════
 sb = get_supabase()
-res_count = sb.table("leads").select("id", count="exact").limit(1).execute()
+res_count   = sb.table("leads").select("id", count="exact").limit(1).execute()
 total_leads = res_count.count or 0
 
 st.title("💎 Talent Engine Analytics")
 st.caption("Plataforma unificada para gestão de leads e análise salarial")
 
 col1, col2, col3 = st.columns(3)
-col1.metric("Leads na Base",      f"{total_leads:,}", "Base Única")
-col2.metric("Qualidade dos Dados", "Gold Standard",   delta="98%")
-col3.metric("Status do Engine",    "Operacional",     delta="Sync")
+col1.metric("Leads na Base",       f"{total_leads:,}", "Base Única")
+col2.metric("Qualidade dos Dados", "Gold Standard",    delta="98%")
+col3.metric("Status do Engine",    "Operacional",      delta="Sync")
 
 st.divider()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 5. LÓGICA DE EXIBIÇÃO
+# 6. EXIBIÇÃO
 # ══════════════════════════════════════════════════════════════════════════════
 if not busca:
     st.markdown("""
@@ -277,7 +393,9 @@ if not busca:
 
 else:
     query = sb.table("leads").select("*")
-    query = query.or_(f"name.ilike.%{busca}%,cargo.ilike.%{busca}%,company_name.ilike.%{busca}%")
+    query = query.or_(
+        f"name.ilike.%{busca}%,cargo.ilike.%{busca}%,company_name.ilike.%{busca}%"
+    )
     if f_area != "Todas":
         query = query.eq("area_identificada", f_area)
     if f_sen != "Todas":
@@ -299,8 +417,8 @@ else:
                 use_container_width=True,
             )
 
-        for r in data:
-            render_card(r)
+        for idx, r in enumerate(data):
+            render_card(r, idx)
 
     else:
         st.warning(f"Nenhum registro encontrado para '{busca}'.")
