@@ -7,7 +7,7 @@ import streamlit as st
 import pandas as pd
 import re
 import unicodedata
-import math
+import hashlib
 from supabase import create_client
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -182,27 +182,36 @@ def search_leads(query="", filters=None, limit=50):
     return result.data or []
 
 
-def insert_leads_batch(records):
+def insert_leads_batch(records, progress_callback=None):
     """Insere leads em lotes no Supabase."""
     sb = get_supabase()
     total = len(records)
     inserted = 0
+    errors = []
     for i in range(0, total, BATCH_SIZE):
         batch = records[i:i + BATCH_SIZE]
         try:
-            sb.table(TABLE).upsert(
-                batch,
-                on_conflict="linkedin_slug",
-                ignore_duplicates=True,
-            ).execute()
+            sb.table(TABLE).insert(batch).execute()
             inserted += len(batch)
+            if progress_callback:
+                pct = 75 + int((i / total) * 25)
+                progress_callback(min(pct, 99), f"📤 Enviando... {inserted:,}/{total:,}")
         except Exception as e:
-            # Se upsert falhar (ex: coluna não existe), tenta insert simples
-            try:
-                sb.table(TABLE).insert(batch).execute()
-                inserted += len(batch)
-            except Exception as e2:
-                st.warning(f"Erro no lote {i//BATCH_SIZE + 1}: {e2}")
+            err_msg = str(e)
+            # Se for erro de duplicata, ignora e continua
+            if 'duplicate' in err_msg.lower() or '23505' in err_msg:
+                # Tenta um por um pra salvar os que não são duplicata
+                for record in batch:
+                    try:
+                        sb.table(TABLE).insert(record).execute()
+                        inserted += 1
+                    except Exception:
+                        pass  # Duplicata individual, ignora
+            else:
+                errors.append(f"Lote {i//BATCH_SIZE + 1}: {err_msg[:200]}")
+    if errors:
+        for err in errors[:3]:
+            st.warning(err)
     return inserted
 
 
@@ -531,7 +540,26 @@ def pipeline_e_salva(uploaded_file, progress_callback=None):
             df_out[dest] = None
 
     # Adicionar linkedin_slug pra deduplicação no banco
-    df_out['linkedin_slug'] = df['_linkedin_slug'] if '_linkedin_slug' in df.columns else None
+    # Fallback: se não tem LinkedIn URL, usa email ou salesNavigatorId ou gera hash
+    slugs = []
+    for idx, row in df.iterrows():
+        slug = row.get('_linkedin_slug')
+        if not slug or pd.isna(slug):
+            # Tenta email
+            email = _norm_str(row.get('linkedinEmail', ''))
+            if email:
+                slug = f"email:{email}"
+            else:
+                # Tenta salesNavigatorId
+                snid = _norm_str(row.get('salesNavigatorId', ''))
+                if snid:
+                    slug = f"snid:{snid}"
+                else:
+                    # Gera hash do nome + cargo + empresa
+                    raw = f"{row.get('name','')}|{row.get('Cargo','')}|{row.get('company_name','')}"
+                    slug = f"hash:{hashlib.md5(raw.encode()).hexdigest()[:16]}"
+        slugs.append(slug)
+    df_out['linkedin_slug'] = slugs
 
     # Limpar valores None/nan
     records = df_out.to_dict(orient='records')
@@ -541,7 +569,7 @@ def pipeline_e_salva(uploaded_file, progress_callback=None):
                 r[k] = None
 
     # 7. Inserir no Supabase
-    inserted = insert_leads_batch(records)
+    inserted = insert_leads_batch(records, progress_callback)
     if progress_callback: progress_callback(100, f"✅ {inserted:,} leads salvos!")
 
     return {
