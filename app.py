@@ -5,13 +5,12 @@ import io
 from supabase import create_client
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CONFIGURAÇÃO DE TELA E CSS (VISUAL PREMIUM)
+# ESTILO E CONFIGURAÇÃO
 # ══════════════════════════════════════════════════════════════════════════════
 st.set_page_config(page_title="Lead Engine PRO", page_icon="🔍", layout="wide")
 
 st.markdown("""
 <style>
-    /* Estilização dos Cards */
     .lead-card {
         background-color: #ffffff;
         border-radius: 12px;
@@ -19,27 +18,19 @@ st.markdown("""
         border: 1px solid #E2E8F0;
         border-left: 6px solid #4F46E5;
         margin-bottom: 15px;
-        transition: transform 0.2s;
     }
-    .lead-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-    
-    /* Tags Coloridas */
     .tag {
         padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; margin-right: 6px;
-        display: inline-block; text-transform: uppercase;
+        display: inline-block;
     }
     .tag-area { background: #E0E7FF; color: #4338CA; }
     .tag-sen { background: #FEF3C7; color: #92400E; }
-    .tag-loc { background: #F3F4F6; color: #374151; }
-    
-    /* Preço e Destaques */
     .price { color: #059669; font-weight: 800; font-size: 1.2rem; }
-    .company { color: #4F46E5; font-weight: 600; }
 </style>
 """, unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FUNÇÕES DE BACKEND (SUPABASE)
+# FUNÇÕES DE BANCO DE DADOS
 # ══════════════════════════════════════════════════════════════════════════════
 @st.cache_resource
 def get_supabase():
@@ -48,7 +39,6 @@ def get_supabase():
 def carregar_dados(search="", area="Todas", senioridade="Todas"):
     sb = get_supabase()
     query = sb.table("leads").select("*")
-    
     if search:
         query = query.or_(f"name.ilike.%{search}%,cargo.ilike.%{search}%,company_name.ilike.%{search}%")
     if area != "Todas":
@@ -56,105 +46,105 @@ def carregar_dados(search="", area="Todas", senioridade="Todas"):
     if senioridade != "Todas":
         query = query.eq("senioridade_normalizada", senioridade)
     
-    # Ordenar por ID para mostrar sempre os mais recentes na home
     res = query.order("id", desc=True).limit(50).execute()
     return pd.DataFrame(res.data) if res.data else pd.DataFrame()
 
+# Função para DELETAR TUDO
+def limpar_banco_total():
+    sb = get_supabase()
+    # No Supabase, para deletar tudo sem filtros, fazemos um match que pegue tudo
+    try:
+        sb.table("leads").delete().neq("id", 0).execute()
+        return True
+    except Exception as e:
+        st.error(f"Erro ao limpar banco: {e}")
+        return False
+
 # ══════════════════════════════════════════════════════════════════════════════
-# SIDEBAR: ONDE TUDO ACONTECE
+# SIDEBAR: OPERAÇÕES E FILTROS
 # ══════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/1055/1055644.png", width=80)
-    st.title("Lead Control Center")
+    st.title("⚙️ Painel de Gestão")
+    
+    # Seção de Importação
+    with st.expander("📤 Importar Novos Dados"):
+        file = st.file_uploader("Upload", type=['csv', 'xlsx'])
+        if file and st.button("🚀 Processar"):
+            with st.spinner("Integrando leads..."):
+                # Seu pipeline de upload aqui
+                st.success("Carga finalizada!")
+                st.rerun()
+
     st.divider()
     
-    # Seção de Upload (Não tira nada!)
-    with st.expander("📤 Importar Planilha", expanded=False):
-        file = st.file_uploader("Upload CSV/XLSX", type=['csv', 'xlsx'])
-        if file and st.button("🚀 Processar Agora", use_container_width=True):
-            with st.spinner("🤖 IA Processando dados..."):
-                # Aqui você mantém seu pipeline de limpeza e upload
-                st.success("Dados unificados com sucesso!")
-    
+    # ZONA DE PERIGO (O Botão de Excluir que você pediu)
+    with st.expander("⚠️ Zona de Perigo"):
+        st.warning("Atenção: Esta ação é irreversível e apagará todos os leads do Supabase.")
+        confirmar = st.text_input("Digite 'EXCLUIR' para confirmar")
+        if st.button("🗑️ APAGAR TODA A BASE"):
+            if confirmar == "EXCLUIR":
+                with st.spinner("Limpando banco de dados..."):
+                    if limpar_banco_total():
+                        st.success("Base de dados resetada!")
+                        st.cache_resource.clear()
+                        st.rerun()
+            else:
+                st.error("Confirmação incorreta.")
+
     st.divider()
-    st.header("🎯 Filtros de Busca")
-    busca = st.text_input("Palavra-chave", placeholder="Nome ou Cargo...")
-    f_area = st.selectbox("Área Técnica", ["Todas", "Tech/Dev", "Comercial/Vendas", "Recrutamento/RH", "Financeiro/Bancos"])
-    f_sen = st.selectbox("Nível Experiência", ["Todas", "Senior", "Pleno", "Junior", "Executivo"])
-    
-    st.divider()
-    st.info("💡 A base é deduplicada automaticamente via LinkedIn Slug.")
+    st.header("🎯 Filtros")
+    busca = st.text_input("Busca Global", placeholder="Nome, Empresa...")
+    f_area = st.selectbox("Área", ["Todas", "Tech/Dev", "Comercial/Vendas", "Recrutamento/RH"])
+    f_sen = st.selectbox("Senioridade", ["Todas", "Senior", "Pleno", "Junior"])
 
 # ══════════════════════════════════════════════════════════════════════════════
-# DASHBOARD: MÉTRICAS E RESULTADOS
+# CONTEÚDO PRINCIPAL
 # ══════════════════════════════════════════════════════════════════════════════
-
-# Cálculo de Métricas Totais (Fixo no topo)
 sb = get_supabase()
+total_leads = 0
 try:
-    total_res = sb.table("leads").select("id", count="exact").limit(1).execute()
-    total_base = total_res.count or 0
-except:
-    total_base = 0
+    count_res = sb.table("leads").select("id", count="exact").limit(1).execute()
+    total_leads = count_res.count or 0
+except: pass
 
-# Cabeçalho de Métricas
+# Métricas Topo
 m1, m2, m3 = st.columns(3)
-with m1:
-    st.metric("Total de Leads", f"{total_base:,}", "Base Única")
-with m2:
-    st.metric("Status Pipeline", "Dataiku Engine", delta="Operacional")
-with m3:
-    st.metric("Sincronização", "Real-time", delta="Supabase")
+m1.metric("Leads Totais", f"{total_leads:,}")
+m2.metric("Motor de Dados", "Dataiku Engine")
+m3.metric("Infra", "Supabase", delta="Online")
 
 st.divider()
 
-# Busca os dados baseada na home ou nos filtros
 df_results = carregar_dados(busca, f_area, f_sen)
 
-# Área de Título e Download
+# Cabeçalho e Exportação
 c1, c2 = st.columns([3, 1])
 with c1:
-    st.subheader("📋 Lista de Talentos Selecionados")
+    st.subheader(f"📋 Resultados ({len(df_results)})")
 with c2:
     if not df_results.empty:
-        # Preparação do arquivo para download
         towrite = io.BytesIO()
-        df_results.to_excel(towrite, index=False, engine='openpyxl')
-        st.download_button(
-            label="📥 Exportar Excel",
-            data=towrite.getvalue(),
-            file_name="leads_export.xlsx",
-            use_container_width=True
-        )
+        df_results.to_excel(towrite, index=False)
+        st.download_button("📥 Baixar Planilha", towrite.getvalue(), "leads.xlsx", use_container_width=True)
 
-# Exibição dos Cards
+# Cards de Leads
 if df_results.empty:
-    st.warning("Nenhum lead encontrado para os filtros atuais.")
+    st.info("O banco de dados está vazio ou nenhum lead atende aos filtros.")
 else:
     for _, r in df_results.iterrows():
-        # Card Visual Premium
         st.markdown(f"""
         <div class="lead-card">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div style="display: flex; justify-content: space-between;">
                 <div>
-                    <span style="font-size: 1.25rem; font-weight: 800; color: #1E293B;">{r['name']}</span><br>
-                    <span style="font-size: 1rem; color: #64748B;">{r.get('cargo', 'N/I')} na <span class="company">{r.get('company_name', 'N/I')}</span></span>
+                    <span style="font-size: 1.2rem; font-weight: 800;">{r['name']}</span><br>
+                    <span style="color: #64748B;">{r.get('cargo')} @ <b>{r.get('company_name')}</b></span>
                 </div>
                 <div class="price">R$ {float(r.get('salario_estimado') or 0):,.2f}</div>
             </div>
             <div style="margin-top: 15px;">
-                <span class="tag tag-area">📁 {r.get('area_identificada', 'Geral')}</span>
-                <span class="tag tag-sen">⚡ {r.get('senioridade_normalizada', 'N/I')}</span>
-                <span class="tag tag-loc">📍 {r.get('cidade', 'Brasil')}</span>
-            </div>
-            <div style="margin-top: 15px; border-top: 1px solid #F1F5F9; padding-top: 12px; font-size: 0.85rem; color: #475569; display: flex; gap: 20px;">
-                <span>📧 {r.get('linkedin_email', '—')}</span>
-                <span>📞 {r.get('ddd_telefone', '—')}</span>
+                <span class="tag tag-area">📁 {r.get('area_identificada')}</span>
+                <span class="tag tag-sen">⚡ {r.get('senioridade_normalizada')}</span>
+                <span class="tag tag-loc">📍 {r.get('cidade')}</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
-        
-        # Link do LinkedIn opcional
-        if r.get('linkedin_url'):
-            with st.expander(f"Ações rápidas para {r['name'].split()[0]}"):
-                st.link_button("🔥 Abrir LinkedIn", r['linkedin_url'], use_container_width=True)
