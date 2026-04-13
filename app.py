@@ -1,4 +1,4 @@
-```python
+python
 """
 🔍 Buscador de Talentos — Streamlit + Supabase
 Pipeline: Upload CSV/XLSX → Limpeza → Normalização → Deduplicação → Supabase → Busca
@@ -752,4 +752,3 @@ for r in results:
         <div style="margin-top: 0.4rem;">{contact_html}</div>
     </div>
     """, unsafe_allow_html=True)
-```
