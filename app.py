@@ -1,3 +1,4 @@
+```python
 """
 🔍 Buscador de Talentos — Streamlit + Supabase
 Pipeline: Upload CSV/XLSX → Limpeza → Normalização → Deduplicação → Supabase → Busca
@@ -16,7 +17,7 @@ from supabase import create_client
 st.set_page_config(page_title="Buscador de Talentos", page_icon="🔍", layout="wide")
 
 TABLE = "leads"
-BATCH_SIZE = 500  # Supabase aceita ~500 rows por insert
+BATCH_SIZE = 500
 
 COLUNAS_BANCO = [
     'name', 'cargo', 'occupation', 'job_title', 'company_name',
@@ -27,7 +28,6 @@ COLUNAS_BANCO = [
     'senioridade_aproximada',
 ]
 
-# Mapeia nomes originais do CSV → nomes do banco (snake_case, sem acentos/especiais)
 COL_MAP = {
     'name': 'name', 'Cargo': 'cargo', 'occupation': 'occupation',
     'job_title': 'job_title', 'company_name': 'company_name',
@@ -53,36 +53,18 @@ def get_supabase():
 
 
 def ensure_table_exists():
-    """Cria a tabela se não existir via SQL."""
     sb = get_supabase()
     sql = """
     CREATE TABLE IF NOT EXISTS leads (
         id BIGSERIAL PRIMARY KEY,
-        name TEXT,
-        cargo TEXT,
-        occupation TEXT,
-        job_title TEXT,
-        company_name TEXT,
-        expertise TEXT,
-        nivel_senioridade TEXT,
-        senioridade_normalizada TEXT,
-        segmento_empresa TEXT,
-        segmento_mercado TEXT,
-        linkedin_email TEXT,
-        ddd_telefone TEXT,
-        linkedin_url TEXT,
-        cidade TEXT,
-        uf TEXT,
-        estado TEXT,
-        pais TEXT,
-        publico_alvo_ads TEXT,
-        recrutador TEXT,
-        sales_navigator_id TEXT,
-        senioridade_aproximada BOOLEAN DEFAULT FALSE,
-        linkedin_slug TEXT,
+        name TEXT, cargo TEXT, occupation TEXT, job_title TEXT, company_name TEXT,
+        expertise TEXT, nivel_senioridade TEXT, senioridade_normalizada TEXT,
+        segmento_empresa TEXT, segmento_mercado TEXT, linkedin_email TEXT,
+        ddd_telefone TEXT, linkedin_url TEXT, cidade TEXT, uf TEXT, estado TEXT,
+        pais TEXT, publico_alvo_ads TEXT, recrutador TEXT, sales_navigator_id TEXT,
+        senioridade_aproximada BOOLEAN DEFAULT FALSE, linkedin_slug TEXT,
         created_at TIMESTAMPTZ DEFAULT NOW()
     );
-
     CREATE INDEX IF NOT EXISTS idx_leads_linkedin_slug ON leads (linkedin_slug);
     CREATE INDEX IF NOT EXISTS idx_leads_sales_navigator_id ON leads (sales_navigator_id);
     CREATE INDEX IF NOT EXISTS idx_leads_linkedin_email ON leads (linkedin_email);
@@ -96,7 +78,6 @@ def ensure_table_exists():
 
 
 def init_table_via_rpc():
-    """Fallback: tenta criar tabela. Se rpc não existir, ignora (usuário cria manual)."""
     try:
         ensure_table_exists()
         return True
@@ -105,7 +86,6 @@ def init_table_via_rpc():
 
 
 def count_leads():
-    """Conta total de leads no banco."""
     try:
         sb = get_supabase()
         result = sb.table(TABLE).select("id", count="exact").limit(1).execute()
@@ -115,7 +95,6 @@ def count_leads():
 
 
 def get_filter_options():
-    """Busca valores únicos pra filtros."""
     sb = get_supabase()
     options = {}
     for col in ['senioridade_normalizada', 'expertise', 'segmento_empresa', 'segmento_mercado']:
@@ -126,7 +105,6 @@ def get_filter_options():
             else:
                 options[col] = []
         except Exception:
-            # Fallback: busca direto (mais lento pra tabelas grandes)
             try:
                 result = sb.table(TABLE).select(col).limit(5000).execute()
                 vals = set(r[col] for r in result.data if r.get(col) and r[col] not in ('nan', '', 'None'))
@@ -137,15 +115,12 @@ def get_filter_options():
 
 
 def search_leads(query="", filters=None, limit=50):
-    """Busca leads com filtros e texto livre."""
     sb = get_supabase()
     q = sb.table(TABLE).select("*")
-
     if filters:
         if filters.get('senioridade_normalizada'):
             q = q.in_("senioridade_normalizada", filters['senioridade_normalizada'])
         if filters.get('expertise'):
-            # Expertise pode ser parcial, usa or com ilike
             or_parts = ",".join([f"expertise.ilike.%{e}%" for e in filters['expertise']])
             q = q.or_(or_parts)
         if filters.get('segmento_empresa'):
@@ -153,37 +128,27 @@ def search_leads(query="", filters=None, limit=50):
         if filters.get('segmento_mercado'):
             q = q.in_("segmento_mercado", filters['segmento_mercado'])
         if filters.get('estados'):
-            estados_lower = [e.lower() for e in filters['estados']]
             or_parts = ",".join(
                 [f"uf.ilike.{e}" for e in filters['estados']] +
                 [f"estado.ilike.{e}" for e in filters['estados']]
             )
             q = q.or_(or_parts)
-
     if query.strip():
-        # Busca textual: usa or com ilike em múltiplas colunas
         terms = [t for t in query.lower().split() if len(t) > 2]
         for term in terms:
             or_parts = ",".join([
-                f"cargo.ilike.%{term}%",
-                f"occupation.ilike.%{term}%",
-                f"job_title.ilike.%{term}%",
-                f"expertise.ilike.%{term}%",
-                f"company_name.ilike.%{term}%",
-                f"name.ilike.%{term}%",
-                f"cidade.ilike.%{term}%",
-                f"uf.ilike.%{term}%",
-                f"estado.ilike.%{term}%",
-                f"segmento_mercado.ilike.%{term}%",
+                f"cargo.ilike.%{term}%", f"occupation.ilike.%{term}%",
+                f"job_title.ilike.%{term}%", f"expertise.ilike.%{term}%",
+                f"company_name.ilike.%{term}%", f"name.ilike.%{term}%",
+                f"cidade.ilike.%{term}%", f"uf.ilike.%{term}%",
+                f"estado.ilike.%{term}%", f"segmento_mercado.ilike.%{term}%",
             ])
             q = q.or_(or_parts)
-
     result = q.limit(limit).execute()
     return result.data or []
 
 
 def insert_leads_batch(records, progress_callback=None):
-    """Insere leads em lotes no Supabase."""
     sb = get_supabase()
     total = len(records)
     inserted = 0
@@ -207,15 +172,13 @@ def insert_leads_batch(records, progress_callback=None):
                         pass
             else:
                 errors.append(f"Lote {i//BATCH_SIZE + 1}: {err_msg[:500]}")
-                # Mostra o primeiro registro do lote que falhou pra debug
                 if len(errors) == 1:
                     sample = {k: str(v)[:50] for k, v in batch[0].items() if v is not None}
                     errors.append(f"Amostra do registro: {sample}")
                 if len(errors) >= 6:
-                    break  # Para se muitos erros
+                    break
     if errors:
-        for err in errors[:5]:
-            st.warning(err)
+        st.session_state['pipeline_errors'] = errors
     return inserted
 
 
@@ -253,15 +216,12 @@ def limpar_localizacao(df):
         if col not in df.columns:
             df[col] = ''
         df[col] = df[col].astype(str).replace('nan', '')
-
     uf_map = {'Federal District': 'Brasilia', 'Brasília': 'Brasilia'}
     for old, new in uf_map.items():
         df.loc[df['UF'] == old, 'UF'] = new
-
     cidade_map = {'Federal District': 'Brasilia', 'Distrito Federal': 'Brasilia', 'Brasília': 'Brasilia'}
     for old, new in cidade_map.items():
         df.loc[df['Cidade'] == old, 'Cidade'] = new
-
     cidade_to_uf = {
         'Planaltina': 'Distrito Federal', 'Brasilia': 'Distrito Federal',
         'Taguatinga': 'Distrito Federal', 'Ceilândia': 'Distrito Federal',
@@ -269,27 +229,22 @@ def limpar_localizacao(df):
     }
     for cidade, uf in cidade_to_uf.items():
         df.loc[df['Cidade'] == cidade, 'UF'] = uf
-
     cidade_to_estado = {
         'Sao Paulo': 'Sao Paulo', 'Osasco': 'Sao Paulo',
         'Guarulhos': 'Sao Paulo', 'San Pablo': 'Filipinas',
     }
     for cidade, estado in cidade_to_estado.items():
         df.loc[df['Cidade'] == cidade, 'Estado'] = estado
-
     estado_map = {'San Pablo': 'Sao Paulo', 'Sao Paulo': 'SP', 'Brasil': 'DF', 'Minnesota': 'EUA'}
     for old, new in estado_map.items():
         df.loc[df['Estado'] == old, 'Estado'] = new
-
     df.loc[df['UF'] == 'San Pablo', 'Estado'] = 'Filipinas'
     df.loc[df['UF'] == 'Distrito Federal', 'Estado'] = 'DF'
     df.loc[df['location'] == 'Brésil', 'Pais'] = 'Brasil'
     df.loc[df['location'] == 'Brésil', 'location'] = 'Brasil'
     df.loc[df['location'] == 'Brazil', 'location'] = 'Brasil'
-
     mask_exterior = (df['Pais'].str.strip() != '') & (df['Pais'] != 'Brasil') & (df['Pais'] != 'nan')
     df.loc[mask_exterior, 'Estado'] = 'Exterior'
-
     return df
 
 
@@ -320,11 +275,9 @@ def _inferir_exact(nivel, cargo, jt, cat18):
     if 'pleno' in n: return 'Pleno'
     if any(x in n for x in ('senior','especialista')): return 'Senior/Especialista'
     if any(x in n for x in ('lideranca','executivo','coordenacao','gerencia')): return 'Lideranca/Executivo'
-
     jt_first = str(jt).split('|')[0] if pd.notna(jt) else ''
     texto = strip_accents((str(cargo) + ' ' + jt_first).lower())
     jt_full = strip_accents(str(jt).lower()) if pd.notna(jt) else ''
-
     if re.search(r'(estagio|estagiario|estagiaria|trainee|aprendiz|intern\b|apprentice)', texto): return 'Junior/Estagio'
     if re.search(r'(\bjunior\b|\bjr\b)', texto): return 'Junior/Estagio'
     if re.search(r'\bpleno\b', texto): return 'Pleno'
@@ -333,12 +286,10 @@ def _inferir_exact(nivel, cargo, jt, cat18):
     if re.search(r'(\biii\b|\biv\b|\bn3\b|\bn4\b)', texto): return 'Senior/Especialista'
     if re.search(r'(\bii\b|\bn2\b)', texto): return 'Pleno'
     if re.search(r'\bn1\b', texto): return 'Junior/Estagio'
-
     if re.search(r'(estagio|estagiario|trainee|intern\b|\bjunior\b|\bjr\b)', jt_full): return 'Junior/Estagio'
     if re.search(r'\bpleno\b', jt_full): return 'Pleno'
     if re.search(r'(\bsenior\b|\bsr\b|\bespecialista\b|\blead\b|\bstaff\b|\bprincipal\b|\biii\b|\biv\b)', jt_full): return 'Senior/Especialista'
     if re.search(r'(diretor|diretora|ceo|cto|gerente|manager|coordenador|supervisor|\bvp\b|head |founder|presidente|executive\b)', jt_full): return 'Lideranca/Executivo'
-
     cat18_s = str(cat18).strip()
     if ' - ' in cat18_s:
         suffix = cat18_s.split(' - ', 1)[1].strip()
@@ -346,20 +297,17 @@ def _inferir_exact(nivel, cargo, jt, cat18):
         if mapped and mapped != 'Nao Identificado': return mapped
     prefix18 = cat18_s.split(' - ')[0].strip() if ' - ' in cat18_s else cat18_s
     if prefix18 in ('Executivo/Dono', 'Gestão/Liderança'): return 'Lideranca/Executivo'
-
     return 'Nao Identificado'
 
 
 def _build_lookups(dataframe):
     if 'Nivel_Senioridade' not in dataframe.columns:
         return {}, {}, {}, {}, {}, {}
-
     has_nivel = dataframe['Nivel_Senioridade'].notna() & \
                 (~dataframe['Nivel_Senioridade'].astype(str).isin(['', 'nan', 'NaN']))
     base = dataframe[has_nivel].copy()
     if base.empty:
         return {}, {}, {}, {}, {}, {}
-
     def _norm_nivel(n):
         n = strip_accents(str(n).lower())
         if any(x in n for x in ('estagio','trainee','junior','aprendiz')): return 'Junior/Estagio'
@@ -367,14 +315,11 @@ def _build_lookups(dataframe):
         if any(x in n for x in ('senior','especialista')): return 'Senior/Especialista'
         if any(x in n for x in ('lideranca','executivo','coordenacao','gerencia')): return 'Lideranca/Executivo'
         return None
-
     base['_sen'] = base['Nivel_Senioridade'].apply(_norm_nivel)
     base['_cn'] = base['Cargo'].fillna('').apply(lambda x: strip_accents(str(x).lower().strip()))
     base['_exp'] = base.get('Expertise', pd.Series(dtype=str)).fillna('').astype(str).str.strip()
     base = base[base['_sen'].notna()]
-
     _cols = ['Junior/Estagio','Pleno','Senior/Especialista','Lideranca/Executivo']
-
     def _make_lookup(grp_col, min_count=5, min_pct=0.40):
         if grp_col not in base.columns or base[grp_col].isna().all():
             return {}, {}
@@ -389,7 +334,6 @@ def _build_lookups(dataframe):
         high = piv[piv['pct'] >= 0.55]['maj'].to_dict()
         approx = piv[(piv['pct'] >= min_pct) & (piv['pct'] < 0.55)]['maj'].to_dict()
         return high, approx
-
     cargo_high, cargo_approx = _make_lookup('_cn', min_count=5)
     exp_high, exp_approx = _make_lookup('_exp', min_count=10)
     seg_high, seg_approx = {}, {}
@@ -401,12 +345,10 @@ def _build_lookups(dataframe):
 
 def _rescue(cargo, jt, cat18, segmento, expertise, lookups):
     cargo_high, cargo_approx, exp_high, exp_approx, seg_high, seg_approx = lookups
-
     jt_first = str(jt).split('|')[0] if pd.notna(jt) else ''
     texto = strip_accents((str(cargo) + ' ' + jt_first).lower())
     jt_full = strip_accents(str(jt).lower()) if pd.notna(jt) else ''
     combined = texto + ' ' + jt_full
-
     if re.search(r'(\biii\b|\biv\b|\bn3\b|\bn4\b)', combined): return 'Senior/Especialista', False
     if re.search(r'(\bii\b|\bn2\b)', combined): return 'Pleno', False
     if re.search(r'\bn1\b', combined): return 'Junior/Estagio', False
@@ -414,7 +356,6 @@ def _rescue(cargo, jt, cat18, segmento, expertise, lookups):
     if re.search(r'\bpleno\b', jt_full): return 'Pleno', False
     if re.search(r'(\bsenior\b|\bsr\b|\bespecialista\b|\blead\b|\bstaff\b|\bprincipal\b|\biii\b|\biv\b)', jt_full): return 'Senior/Especialista', False
     if re.search(r'(diretor|diretora|ceo|cto|gerente|manager|coordenador|supervisor|\bvp\b|head |founder|presidente|executive\b)', jt_full): return 'Lideranca/Executivo', False
-
     cat18_s = str(cat18).strip()
     if ' - ' in cat18_s:
         suffix = cat18_s.split(' - ', 1)[1].strip()
@@ -423,10 +364,8 @@ def _rescue(cargo, jt, cat18, segmento, expertise, lookups):
     prefix18 = cat18_s.split(' - ')[0].strip() if ' - ' in cat18_s else cat18_s
     if prefix18 in ('Executivo/Dono', 'Gestão/Liderança'): return 'Lideranca/Executivo', False
     if str(segmento) == 'Executivo/Dono': return 'Lideranca/Executivo', False
-
     exp = str(expertise).strip()
     if exp in EXPERTISE_SEN_MAP: return EXPERTISE_SEN_MAP[exp], False
-
     cn = strip_accents(str(cargo).lower().strip())
     if cn in cargo_high: return cargo_high[cn], False
     if cn in cargo_approx: return cargo_approx[cn], True
@@ -442,7 +381,6 @@ def normalizar_senioridade(df):
                 'segmento_mercado', 'Expertise']:
         if col not in df.columns:
             df[col] = ''
-
     lookups = _build_lookups(df)
     df['senioridade_normalizada'] = df.apply(
         lambda r: _inferir_exact(
@@ -466,33 +404,25 @@ def normalizar_senioridade(df):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ETAPA 3 — DEDUPLICAÇÃO LOCAL (antes de enviar pro Supabase)
+# ETAPA 3 — DEDUPLICAÇÃO LOCAL
 # ══════════════════════════════════════════════════════════════════════════════
 def deduplicar_local(df):
-    """Deduplica dentro do DataFrame antes de enviar pro banco."""
     total_antes = len(df)
     for col in ['salesNavigatorId', 'linkedinUrl', 'linkedinEmail']:
         if col not in df.columns:
             df[col] = None
-
     df['_salesnavid_norm'] = df['salesNavigatorId'].apply(_norm_str)
     df['_linkedin_slug'] = df['linkedinUrl'].apply(_norm_linkedin)
     df['_email_norm'] = df['linkedinEmail'].apply(_norm_str)
     df['_score'] = df.notna().sum(axis=1)
     df = df.sort_values('_score', ascending=False)
-
-    # Camada 1 — salesNavigatorId
     mask = df['_salesnavid_norm'].notna()
     df = df[~(mask & df.duplicated(subset=['_salesnavid_norm'], keep='first'))].copy()
-    # Camada 2 — LinkedIn URL
     mask = df['_linkedin_slug'].notna()
     df = df[~(mask & df.duplicated(subset=['_linkedin_slug'], keep='first'))].copy()
-    # Camada 3 — Email
     mask = df['_email_norm'].notna()
     df = df[~(mask & df.duplicated(subset=['_email_norm'], keep='first'))].copy()
-
     df = df.drop(columns=['_salesnavid_norm', '_email_norm', '_score'])
-    # Mantém _linkedin_slug pra usar como unique key no Supabase
     return df, total_antes, len(df)
 
 
@@ -500,9 +430,6 @@ def deduplicar_local(df):
 # PIPELINE COMPLETO
 # ══════════════════════════════════════════════════════════════════════════════
 def pipeline_e_salva(uploaded_file, progress_callback=None):
-    """Lê arquivo, limpa, normaliza, deduplica e salva no Supabase."""
-
-    # Schema esperado do Dataiku export (sem header)
     DATAIKU_SCHEMA = [
         'Sheet Name','Origem','name','firstName','lastName',
         'Nivel_Senioridade','Expertise','Segmento_Empresa','DDI','DDD_Telefone',
@@ -516,14 +443,10 @@ def pipeline_e_salva(uploaded_file, progress_callback=None):
         'lastEmailSentDate','connectionRequestDate',
         'senioridade_normalizada','senioridade_aproximada',
     ]
-
-    # 1. Ler arquivo
     if progress_callback: progress_callback(5, "📂 Lendo arquivo...")
     name = uploaded_file.name.lower()
     if name.endswith('.csv'):
         df = pd.read_csv(uploaded_file, dtype=str)
-        # Detecta se o CSV veio sem header (export Dataiku)
-        # Se nenhuma coluna conhecida aparece no header, assume sem header
         known_cols = {'name', 'linkedinEmail', 'Cargo', 'linkedinUrl', 'company_name', 'Cidade'}
         if not known_cols.intersection(set(df.columns)):
             if progress_callback: progress_callback(8, "📂 CSV sem cabeçalho detectado, aplicando schema...")
@@ -531,14 +454,11 @@ def pipeline_e_salva(uploaded_file, progress_callback=None):
             if len(df.columns) == len(DATAIKU_SCHEMA):
                 df = pd.read_csv(uploaded_file, dtype=str, header=None, names=DATAIKU_SCHEMA)
             else:
-                # Tenta ler com header=None e mapear pelo numero de colunas
                 df = pd.read_csv(uploaded_file, dtype=str, header=None)
-                # Assign as many names as we can
                 for i, col_name in enumerate(DATAIKU_SCHEMA[:len(df.columns)]):
                     df = df.rename(columns={i: col_name})
     elif name.endswith(('.xlsx', '.xls')):
         df = pd.read_excel(uploaded_file, dtype=str)
-        # Mesma checagem pra XLSX
         known_cols = {'name', 'linkedinEmail', 'Cargo', 'linkedinUrl', 'company_name', 'Cidade'}
         if not known_cols.intersection(set(df.columns)):
             if len(df.columns) == len(DATAIKU_SCHEMA):
@@ -547,76 +467,52 @@ def pipeline_e_salva(uploaded_file, progress_callback=None):
     else:
         raise ValueError("Use CSV ou XLSX")
     total_raw = len(df)
-
-    # 2. Garantir colunas mínimas
     for col in ['Cidade', 'UF', 'Estado', 'Pais', 'location', 'Nivel_Senioridade',
                 'Cargo', 'job_title', 'Categoria_Cargo', 'segmento_mercado',
                 'Expertise', 'salesNavigatorId', 'linkedinUrl', 'linkedinEmail']:
         if col not in df.columns:
             df[col] = ''
-
-    # 3. Limpar localização
     if progress_callback: progress_callback(20, "🧹 Limpando localização...")
     df = limpar_localizacao(df)
-
-    # 4. Normalizar senioridade
     if progress_callback: progress_callback(40, "🎯 Normalizando senioridade...")
     df = normalizar_senioridade(df)
-
-    # 5. Deduplicar localmente
     if progress_callback: progress_callback(60, "🔍 Deduplicando...")
     df, antes, depois = deduplicar_local(df)
-
-    # 6. Preparar records pro Supabase
     if progress_callback: progress_callback(75, f"📤 Enviando {depois:,} leads pro banco...")
-
-    # Renomear colunas
     df_out = pd.DataFrame()
     for orig, dest in COL_MAP.items():
         if orig in df.columns:
             df_out[dest] = df[orig].astype(str).replace({'nan': None, 'None': None, '': None})
         else:
             df_out[dest] = None
-
-    # Adicionar linkedin_slug pra deduplicação no banco
-    # Fallback: se não tem LinkedIn URL, usa email ou salesNavigatorId ou gera hash
     slugs = []
     for idx, row in df.iterrows():
         slug = row.get('_linkedin_slug')
         if not slug or pd.isna(slug):
-            # Tenta email
             email = _norm_str(row.get('linkedinEmail', ''))
             if email:
                 slug = f"email:{email}"
             else:
-                # Tenta salesNavigatorId
                 snid = _norm_str(row.get('salesNavigatorId', ''))
                 if snid:
                     slug = f"snid:{snid}"
                 else:
-                    # Gera hash do nome + cargo + empresa
                     raw = f"{row.get('name','')}|{row.get('Cargo','')}|{row.get('company_name','')}"
                     slug = f"hash:{hashlib.md5(raw.encode()).hexdigest()[:16]}"
         slugs.append(slug)
     df_out['linkedin_slug'] = slugs
-
-    # Limpar valores None/nan e converter tipos
     records = df_out.to_dict(orient='records')
     for r in records:
         for k, v in list(r.items()):
             if v in ('nan', 'None', '', 'none', 'NaN'):
                 r[k] = None
-        # Fix: senioridade_aproximada precisa ser boolean, não string
         sa = r.get('senioridade_aproximada')
         if sa is not None:
             r['senioridade_aproximada'] = str(sa).lower() in ('true', '1', 'yes')
         else:
             r['senioridade_aproximada'] = False
-
-    # 7. Inserir no Supabase
     inserted = insert_leads_batch(records, progress_callback)
     if progress_callback: progress_callback(100, f"✅ {inserted:,} leads salvos!")
-
     return {
         'arquivo': uploaded_file.name,
         'linhas_raw': total_raw,
@@ -657,37 +553,24 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## 📤 Importar Planilha")
-
     total = count_leads()
     if total > 0:
         st.success(f"Banco ativo: **{total:,}** leads")
     else:
         st.info("Banco vazio — suba sua primeira planilha!")
-
     st.markdown("---")
-
-    uploaded = st.file_uploader(
-        "Arraste CSV ou XLSX aqui",
-        type=['csv', 'xlsx', 'xls'],
-        label_visibility="collapsed",
-    )
-
+    uploaded = st.file_uploader("Arraste CSV ou XLSX aqui", type=['csv', 'xlsx', 'xls'], label_visibility="collapsed")
     if uploaded and st.button("🚀 Processar e Salvar", type="primary", use_container_width=True):
         progress_bar = st.progress(0)
         status_text = st.empty()
         spinner_placeholder = st.empty()
-
-        # Flag de cancelamento via session_state
         if 'cancelar_upload' not in st.session_state:
             st.session_state.cancelar_upload = False
-
         stop_btn = st.button("⏹️ Parar processamento", use_container_width=True)
         if stop_btn:
             st.session_state.cancelar_upload = True
-
         def update_progress(pct, msg):
             progress_bar.progress(pct / 100)
             spinner_placeholder.markdown(
@@ -701,29 +584,28 @@ with st.sidebar:
                 unsafe_allow_html=True
             )
             status_text.text("")
-
         try:
             result = pipeline_e_salva(uploaded, update_progress)
             spinner_placeholder.empty()
-            st.success(
-                f"**{result['arquivo']}**\n\n"
-                f"Linhas no arquivo: {result['linhas_raw']:,}\n\n"
-                f"Após deduplicação: {result['depois_dedup']:,}\n\n"
-                f"Enviados pro banco: {result['inseridos']:,}"
+            st.session_state['pipeline_success'] = (
+                f"✅ **{result['arquivo']}** — "
+                f"Linhas: {result['linhas_raw']:,} → "
+                f"Dedup: {result['depois_dedup']:,} → "
+                f"Salvos: {result['inseridos']:,}"
             )
             st.cache_data.clear()
             st.rerun()
         except Exception as e:
             import traceback
             spinner_placeholder.empty()
-            st.error(f"Erro: {e}")
-            st.code(traceback.format_exc(), language="text")
-
+            st.session_state['pipeline_errors'] = [
+                f"Erro: {e}",
+                traceback.format_exc()
+            ]
+            st.rerun()
     st.markdown("---")
     st.caption("Cada planilha que você sobe passa pelo pipeline completo "
                "(limpeza → normalização → deduplicação) e é adicionada ao banco.")
-
-    # Botão de limpar banco
     if count_leads() > 0:
         st.markdown("---")
         with st.expander("⚠️ Manutenção"):
@@ -744,8 +626,21 @@ with st.sidebar:
                         st.error(f"Erro: {e}")
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
 st.markdown("# 🔍 Buscador de Talentos")
+
+if st.session_state.get('pipeline_errors'):
+    st.error("⚠️ Erros durante o upload:")
+    for err in st.session_state['pipeline_errors'][:5]:
+        st.code(err, language="text")
+    if st.button("✕ Fechar erros"):
+        del st.session_state['pipeline_errors']
+        st.rerun()
+
+if st.session_state.get('pipeline_success'):
+    st.success(st.session_state['pipeline_success'])
+    if st.button("✕ Fechar"):
+        del st.session_state['pipeline_success']
+        st.rerun()
 
 total = count_leads()
 if total == 0:
@@ -759,7 +654,6 @@ if total == 0:
     """, unsafe_allow_html=True)
     st.stop()
 
-# ── Métricas ──────────────────────────────────────────────────────────────────
 col1, col2, col3 = st.columns(3)
 with col1:
     st.markdown(f'<div class="metric-card"><h3>Total leads</h3><p>{total:,}</p></div>', unsafe_allow_html=True)
@@ -770,7 +664,6 @@ with col3:
 
 st.markdown("")
 
-# ── Filtros ───────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def cached_filter_options():
     return get_filter_options()
@@ -785,7 +678,6 @@ with st.expander("🎛️ Filtros", expanded=True):
         fil_expertise = st.multiselect("Expertise", options.get('expertise', []))
     with fc3:
         fil_segmento = st.multiselect("Segmento empresa", options.get('segmento_empresa', []))
-
     fc4, fc5 = st.columns(2)
     with fc4:
         fil_mercado = st.multiselect("Área de mercado", options.get('segmento_mercado', []))
@@ -796,7 +688,6 @@ with st.expander("🎛️ Filtros", expanded=True):
 
 consulta = st.text_input("🔎 Busca livre", placeholder='Ex: "head de produto SP" ou "engenheiro sênior"')
 
-# Verificar filtros
 filters = {}
 if fil_senioridade: filters['senioridade_normalizada'] = fil_senioridade
 if fil_expertise: filters['expertise'] = fil_expertise
@@ -805,18 +696,15 @@ if fil_mercado: filters['segmento_mercado'] = fil_mercado
 if fil_estados: filters['estados'] = fil_estados
 
 has_filters = bool(filters) or bool(consulta.strip())
-
 if not has_filters:
     st.info("Use os filtros ou a busca para encontrar leads.")
     st.stop()
 
-# ── Busca ─────────────────────────────────────────────────────────────────────
 with st.spinner("Buscando..."):
     results = search_leads(query=consulta, filters=filters, limit=50)
 
 st.markdown(f"**{len(results)} resultados** (mostrando até 50)")
 
-# Export
 if results:
     df_export = pd.DataFrame(results)
     cols_export = [c for c in COLUNAS_BANCO if c in df_export.columns]
@@ -829,7 +717,6 @@ if results:
         if emails:
             st.download_button("📧 Emails", '\n'.join(emails), "emails.txt", "text/plain")
 
-# Cards
 for r in results:
     nome = r.get('name') or '—'
     cargo = r.get('cargo') or '—'
@@ -841,7 +728,6 @@ for r in results:
     email = r.get('linkedin_email') or ''
     tel = r.get('ddd_telefone') or ''
     li_url = r.get('linkedin_url') or ''
-
     tags_html = ''
     if sen and sen != 'Nao Identificado':
         tags_html += f'<span class="lead-tag senior">{sen}</span>'
@@ -850,7 +736,6 @@ for r in results:
     loc_parts = [p for p in [cidade, uf] if p]
     if loc_parts:
         tags_html += f'<span class="lead-tag location">{" / ".join(loc_parts)}</span>'
-
     contact_html = ''
     if email and '@' in email:
         contact_html += f'<span style="color:var(--color-text-secondary); font-size:0.8rem;">📧 {email}</span> '
@@ -858,7 +743,6 @@ for r in results:
         contact_html += f'<span style="color:var(--color-text-secondary); font-size:0.8rem;">📞 {tel}</span> '
     if li_url and 'linkedin' in li_url.lower():
         contact_html += f'<a href="{li_url}" target="_blank" style="color:var(--color-text-info); font-size:0.8rem;">🔗 LinkedIn</a>'
-
     st.markdown(f"""
     <div class="lead-card">
         <div class="lead-name">{nome}</div>
@@ -868,3 +752,4 @@ for r in results:
         <div style="margin-top: 0.4rem;">{contact_html}</div>
     </div>
     """, unsafe_allow_html=True)
+```
