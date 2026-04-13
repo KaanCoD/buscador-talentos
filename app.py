@@ -647,13 +647,7 @@ with st.sidebar:
                 f"Enviados pro banco: {result['inseridos']:,}"
             )
             st.cache_data.clear()
-            st.rerun()
-        except Exception as e:
-            st.error(f"Erro: {e}")
-
-    st.markdown("---")
-    st.caption("Cada planilha que você sobe passa pelo pipeline completo "
-               "(limpeza → normalização → deduplicação) e é adicionada ao banco.")
+            
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
