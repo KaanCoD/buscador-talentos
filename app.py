@@ -1,150 +1,183 @@
 import streamlit as st
 import pandas as pd
-import hashlib
 import io
+import time
 from supabase import create_client
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ESTILO E CONFIGURAÇÃO
+# UI DESIGN SYSTEM (MODERNO & LIMPO)
 # ══════════════════════════════════════════════════════════════════════════════
-st.set_page_config(page_title="Lead Engine PRO", page_icon="🔍", layout="wide")
+st.set_page_config(page_title="Talent Analytics Pro", page_icon="💎", layout="wide")
 
 st.markdown("""
 <style>
+    /* Estilo do Fundo e Container */
+    .stApp { background-color: #F8FAFC; }
+    
+    /* Métrica Estilizada */
+    [data-testid="stMetricValue"] { font-size: 1.8rem !important; font-weight: 800 !important; color: #1E293B; }
+    div[data-testid="metric-container"] {
+        background: white; padding: 20px; border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #E2E8F0;
+    }
+
+    /* Card de Lead Estilo Dataiku */
     .lead-card {
-        background-color: #ffffff;
+        background: white;
         border-radius: 12px;
-        padding: 20px;
+        padding: 24px;
+        margin-bottom: 16px;
         border: 1px solid #E2E8F0;
-        border-left: 6px solid #4F46E5;
-        margin-bottom: 15px;
+        transition: all 0.3s ease;
     }
+    .lead-card:hover {
+        border-color: #4F46E5;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        transform: translateY(-2px);
+    }
+
+    /* Tags */
     .tag {
-        padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; margin-right: 6px;
-        display: inline-block;
+        padding: 4px 12px; border-radius: 6px; font-size: 11px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.5px; margin-right: 8px;
     }
-    .tag-area { background: #E0E7FF; color: #4338CA; }
-    .tag-sen { background: #FEF3C7; color: #92400E; }
-    .price { color: #059669; font-weight: 800; font-size: 1.2rem; }
+    .tag-blue { background: #E0E7FF; color: #4338CA; }
+    .tag-amber { background: #FFF7ED; color: #9A3412; }
+    .tag-slate { background: #F1F5F9; color: #475569; }
+    
+    .salary-label { color: #059669; font-size: 1.2rem; font-weight: 800; }
 </style>
 """, unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FUNÇÕES DE BANCO DE DADOS
+# BACKEND & LOGICA DE SEGURANÇA
 # ══════════════════════════════════════════════════════════════════════════════
 @st.cache_resource
 def get_supabase():
     return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
-def carregar_dados(search="", area="Todas", senioridade="Todas"):
+def safe_delete_all():
     sb = get_supabase()
-    query = sb.table("leads").select("*")
-    if search:
-        query = query.or_(f"name.ilike.%{search}%,cargo.ilike.%{search}%,company_name.ilike.%{search}%")
-    if area != "Todas":
-        query = query.eq("area_identificada", area)
-    if senioridade != "Todas":
-        query = query.eq("senioridade_normalizada", senioridade)
+    status = st.empty()
+    progress = st.empty()
     
-    res = query.order("id", desc=True).limit(50).execute()
-    return pd.DataFrame(res.data) if res.data else pd.DataFrame()
-
-# Função para DELETAR TUDO
-def limpar_banco_total():
-    sb = get_supabase()
-    # No Supabase, para deletar tudo sem filtros, fazemos um match que pegue tudo
     try:
-        sb.table("leads").delete().neq("id", 0).execute()
-        return True
+        res = sb.table("leads").select("id", count="exact").limit(1).execute()
+        total = res.count or 0
+        
+        if total == 0:
+            st.toast("Base já está vazia!", icon="ℹ️")
+            return
+
+        eliminados = 0
+        while True:
+            batch = sb.table("leads").select("id").limit(400).execute()
+            ids = [x['id'] for x in batch.data]
+            if not ids: break
+            
+            sb.table("leads").delete().in_("id", ids).execute()
+            eliminados += len(ids)
+            
+            # Feedback Visual
+            perc = min(int((eliminados/total)*100), 100)
+            progress.progress(perc)
+            status.info(f"🧬 Purificando dados: {eliminados}/{total}")
+        
+        status.success("🚀 Base de dados resetada com sucesso!")
+        time.sleep(1.5)
+        st.rerun()
     except Exception as e:
-        st.error(f"Erro ao limpar banco: {e}")
-        return False
+        st.error(f"Erro na exclusão: {e}")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SIDEBAR: OPERAÇÕES E FILTROS
+# SIDEBAR (CONTROLES CENTRALIZADOS)
 # ══════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
-    st.title("⚙️ Painel de Gestão")
+    st.title("💎 Control Panel")
     
-    # Seção de Importação
-    with st.expander("📤 Importar Novos Dados"):
-        file = st.file_uploader("Upload", type=['csv', 'xlsx'])
-        if file and st.button("🚀 Processar"):
-            with st.spinner("Integrando leads..."):
-                # Seu pipeline de upload aqui
+    with st.expander("📥 Ingestão de Dados", expanded=False):
+        file = st.file_uploader("Upload Dataset", type=['csv', 'xlsx'])
+        if file and st.button("Executar Pipeline"):
+            with st.spinner("🤖 Processando..."):
                 st.success("Carga finalizada!")
-                st.rerun()
-
-    st.divider()
-    
-    # ZONA DE PERIGO (O Botão de Excluir que você pediu)
-    with st.expander("⚠️ Zona de Perigo"):
-        st.warning("Atenção: Esta ação é irreversível e apagará todos os leads do Supabase.")
-        confirmar = st.text_input("Digite 'EXCLUIR' para confirmar")
-        if st.button("🗑️ APAGAR TODA A BASE"):
-            if confirmar == "EXCLUIR":
-                with st.spinner("Limpando banco de dados..."):
-                    if limpar_banco_total():
-                        st.success("Base de dados resetada!")
-                        st.cache_resource.clear()
-                        st.rerun()
-            else:
-                st.error("Confirmação incorreta.")
 
     st.divider()
     st.header("🎯 Filtros")
-    busca = st.text_input("Busca Global", placeholder="Nome, Empresa...")
-    f_area = st.selectbox("Área", ["Todas", "Tech/Dev", "Comercial/Vendas", "Recrutamento/RH"])
+    busca = st.text_input("Busca Inteligente", placeholder="Nome, Cargo ou Empresa")
+    f_area = st.selectbox("Área de Atuação", ["Todas", "Tech/Dev", "Vendas", "RH", "Executivo"])
     f_sen = st.selectbox("Senioridade", ["Todas", "Senior", "Pleno", "Junior"])
 
+    st.divider()
+    with st.expander("🗑️ Manutenção"):
+        st.caption("Cuidado: Isso apagará toda a base conectada.")
+        if st.button("LIMPAR BASE DE DADOS", type="primary", use_container_width=True):
+            safe_delete_all()
+
 # ══════════════════════════════════════════════════════════════════════════════
-# CONTEÚDO PRINCIPAL
+# DASHBOARD PRINCIPAL
 # ══════════════════════════════════════════════════════════════════════════════
 sb = get_supabase()
-total_leads = 0
-try:
-    count_res = sb.table("leads").select("id", count="exact").limit(1).execute()
-    total_leads = count_res.count or 0
-except: pass
+res_total = sb.table("leads").select("id", count="exact").limit(1).execute()
+total_leads = res_total.count or 0
+
+# Header
+st.title("Talent Engine Analytics")
+st.caption("Plataforma unificada para gestão de leads e análise salarial")
 
 # Métricas Topo
-m1, m2, m3 = st.columns(3)
-m1.metric("Leads Totais", f"{total_leads:,}")
-m2.metric("Motor de Dados", "Dataiku Engine")
-m3.metric("Infra", "Supabase", delta="Online")
+c1, c2, c3 = st.columns(3)
+c1.metric("Leads Monitorados", f"{total_leads:,}")
+c2.metric("Qualidade do Lead", "Gold Standard", delta="High")
+c3.metric("Status do Engine", "Operacional", delta="Sync")
 
 st.divider()
 
-df_results = carregar_dados(busca, f_area, f_sen)
+# Busca de Dados
+query = sb.table("leads").select("*")
+if busca: query = query.or_(f"name.ilike.%{busca}%,cargo.ilike.%{busca}%,company_name.ilike.%{busca}%")
+if f_area != "Todas": query = query.eq("area_identificada", f_area)
+if f_sen != "Todas": query = query.eq("senioridade_normalizada", f_sen)
 
-# Cabeçalho e Exportação
-c1, c2 = st.columns([3, 1])
-with c1:
-    st.subheader(f"📋 Resultados ({len(df_results)})")
-with c2:
-    if not df_results.empty:
+data = query.order("id", desc=True).limit(30).execute().data
+
+# Título da Lista e Download
+h1, h2 = st.columns([3, 1])
+with h1:
+    st.subheader("📋 Resultados da Consulta")
+with h2:
+    if data:
+        df_exp = pd.DataFrame(data)
         towrite = io.BytesIO()
-        df_results.to_excel(towrite, index=False)
-        st.download_button("📥 Baixar Planilha", towrite.getvalue(), "leads.xlsx", use_container_width=True)
+        df_exp.to_excel(towrite, index=False)
+        st.download_button("📥 Exportar Lista", towrite.getvalue(), "leads_pro.xlsx", use_container_width=True)
 
-# Cards de Leads
-if df_results.empty:
-    st.info("O banco de dados está vazio ou nenhum lead atende aos filtros.")
+# Grid de Cards
+if not data:
+    st.info("Nenhum registro encontrado para os critérios selecionados.")
 else:
-    for _, r in df_results.iterrows():
+    for r in data:
         st.markdown(f"""
         <div class="lead-card">
-            <div style="display: flex; justify-content: space-between;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
-                    <span style="font-size: 1.2rem; font-weight: 800;">{r['name']}</span><br>
-                    <span style="color: #64748B;">{r.get('cargo')} @ <b>{r.get('company_name')}</b></span>
+                    <div style="font-size: 1.3rem; font-weight: 800; color: #0F172A;">{r['name']}</div>
+                    <div style="color: #64748B; font-size: 1rem; margin-bottom: 12px;">
+                        {r.get('cargo', 'N/I')} • <b style="color: #4F46E5;">{r.get('company_name', 'N/I')}</b>
+                    </div>
                 </div>
-                <div class="price">R$ {float(r.get('salario_estimado') or 0):,.2f}</div>
+                <div class="salary-label">R$ {float(r.get('salario_estimado') or 0):,.2f}</div>
             </div>
-            <div style="margin-top: 15px;">
-                <span class="tag tag-area">📁 {r.get('area_identificada')}</span>
-                <span class="tag tag-sen">⚡ {r.get('senioridade_normalizada')}</span>
-                <span class="tag tag-loc">📍 {r.get('cidade')}</span>
+            <div style="display: flex; gap: 8px; margin-top: 8px;">
+                <span class="tag tag-blue">📁 {r.get('area_identificada', 'Geral')}</span>
+                <span class="tag tag-amber">⚡ {r.get('senioridade_normalizada', 'N/I')}</span>
+                <span class="tag tag-slate">📍 {r.get('cidade', 'Brasil')}</span>
+            </div>
+            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #F1F5F9; color: #475569; font-size: 0.85rem; display: flex; gap: 20px;">
+                <span>📧 {r.get('linkedin_email', '—')}</span>
+                <span>📞 {r.get('ddd_telefone', '—')}</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
+        if r.get('linkedin_url'):
+            with st.expander(f"Ações rápidas: {r['name'].split()[0]}"):
+                st.link_button("🔥 Abrir Perfil no LinkedIn", r['linkedin_url'], use_container_width=True)
