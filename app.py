@@ -1,6 +1,6 @@
 """
-Buscador de Talentos V2 - Streamlit + Supabase
-Foco em UX/UI Moderno, Organização por Abas e Design System Aprimorado.
+Buscador de Talentos - Streamlit + Supabase
+Pipeline: Upload CSV/XLSX - Limpeza - Normalizacao - Deduplicacao - Supabase - Busca
 """
 import streamlit as st
 import pandas as pd
@@ -9,17 +9,11 @@ import unicodedata
 import hashlib
 from supabase import create_client
 
-# --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(
-    page_title="Buscador de Talentos Pro",
-    page_icon="🎯",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="Buscador de Talentos", page_icon="🔍", layout="wide")
 
-# --- CONSTANTES ---
 TABLE = "leads"
 BATCH_SIZE = 500
+
 COLUNAS_BANCO = [
     'name', 'cargo', 'occupation', 'job_title', 'company_name',
     'expertise', 'nivel_senioridade', 'senioridade_normalizada',
@@ -43,306 +37,168 @@ COL_MAP = {
     'Categoria_Cargo': 'categoria_cargo',
 }
 
-# --- DESIGN SYSTEM (CSS) ---
+# ── DESIGN SYSTEM (LIGHT / WHITE) ───────────────────────────────────────────
+
+AVATAR_COLORS = [
+    '#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b',
+    '#ef4444', '#ec4899', '#6366f1', '#14b8a6', '#f97316',
+    '#0ea5e9', '#a855f7', '#84cc16', '#e11d48', '#7c3aed',
+]
+
+SEN_TAG_COLORS = {
+    'Lideranca/Executivo': ('#6366f1', '#eef2ff'),
+    'Senior/Especialista': ('#0891b2', '#ecfeff'),
+    'Pleno':              ('#059669', '#ecfdf5'),
+    'Junior/Estagio':     ('#d97706', '#fffbeb'),
+    'Nao Identificado':   ('#6b7280', '#f3f4f6'),
+}
+
+TAG_PALETTE = [
+    ('#7c3aed', '#f5f3ff'),
+    ('#0891b2', '#ecfeff'),
+    ('#c2410c', '#fff7ed'),
+    ('#be185d', '#fdf2f8'),
+    ('#4338ca', '#eef2ff'),
+    ('#0f766e', '#f0fdfa'),
+]
+
 CUSTOM_CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap');
 
-:root {
-    --primary: #6366f1;
-    --primary-hover: #4f46e5;
-    --bg-main: #f8fafc;
-    --card-bg: #ffffff;
-    --text-main: #1e293b;
-    --text-muted: #64748b;
-    --border: #e2e8f0;
-    --radius: 12px;
+.main .block-container { max-width: 1280px; padding-top: 1.5rem; }
+h1,h2,h3,h4,h5,h6,p,span,div,label,li {
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
 }
 
-.main .block-container { 
-    max-width: 1400px; 
-    padding-top: 2rem; 
-    background-color: var(--bg-main);
+.tap-header { display:flex; align-items:center; gap:.75rem; margin-bottom:.2rem; }
+.tap-header-icon {
+    width:34px; height:34px; background:#6366f1; border-radius:9px;
+    display:flex; align-items:center; justify-content:center;
+    color:#fff; font-size:.95rem; font-weight:700;
+}
+.tap-header h1 { font-size:1.4rem; font-weight:700; color:#111827; margin:0; letter-spacing:-.01em; }
+.tap-header-sub { font-size:.82rem; color:#6b7280; margin:0 0 1rem 0; }
+
+.tap-kpis { display:flex; gap:.6rem; margin-bottom:1rem; flex-wrap:wrap; }
+.tap-kpi {
+    background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;
+    padding:.5rem 1rem; display:flex; align-items:center; gap:.5rem;
+}
+.tap-kpi-dot { width:8px; height:8px; border-radius:50%; }
+.tap-kpi-dot.blue { background:#6366f1; }
+.tap-kpi-dot.green { background:#10b981; }
+.tap-kpi-label { font-size:.72rem; color:#6b7280; }
+.tap-kpi-val { font-size:.88rem; font-weight:700; color:#111827; }
+
+.tap-rbadge {
+    display:inline-flex; align-items:center; gap:.4rem;
+    background:#f0fdf4; color:#166534; border:1px solid #bbf7d0;
+    padding:.28rem .8rem; border-radius:6px;
+    font-size:.8rem; font-weight:600; margin-bottom:.7rem;
 }
 
-* {
-    font-family: 'Inter', sans-serif !important;
+.tap-grid {
+    display:grid;
+    grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+    gap:.7rem; margin-top:.5rem;
+}
+.tap-card {
+    background:#fff; border:1px solid #e5e7eb; border-radius:11px;
+    padding:.95rem 1.1rem; transition: box-shadow .2s, border-color .2s;
+}
+.tap-card:hover { border-color:#c7d2fe; box-shadow:0 4px 14px -2px rgba(99,102,241,.09); }
+
+.tap-ch { display:flex; align-items:flex-start; gap:.7rem; }
+.tap-av {
+    width:40px; height:40px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:.82rem; font-weight:700; color:#fff; flex-shrink:0;
+}
+.tap-ci { flex:1; min-width:0; }
+.tap-cn {
+    font-size:.92rem; font-weight:600; color:#111827;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.3;
+}
+.tap-cr {
+    font-size:.78rem; color:#4b5563;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+    overflow:hidden; line-height:1.35; margin-top:1px;
+}
+.tap-cc {
+    font-size:.72rem; color:#9ca3af; margin-top:2px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 
-/* Header Styling */
-.header-container {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    margin-bottom: 2rem;
-    padding: 1.5rem;
-    background: white;
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+.tap-tags { display:flex; flex-wrap:wrap; gap:4px; margin-top:.5rem; }
+.tap-tag {
+    display:inline-block; padding:2px 8px; border-radius:4px;
+    font-size:.67rem; font-weight:500; line-height:1.5; white-space:nowrap;
 }
+.tap-tag-rec { background:#fef2f2; color:#dc2626; }
 
-.header-icon {
-    width: 48px;
-    height: 48px;
-    background: var(--primary);
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 1.5rem;
-    font-weight: 800;
+.tap-contact {
+    display:flex; flex-wrap:wrap; gap:.55rem;
+    margin-top:.45rem; padding-top:.45rem; border-top:1px solid #f3f4f6;
 }
+.tap-contact a, .tap-contact span { font-size:.72rem; color:#6b7280; text-decoration:none; }
+.tap-contact a:hover { color:#6366f1; text-decoration:underline; }
 
-.header-text h1 {
-    font-size: 1.75rem;
-    font-weight: 700;
-    color: var(--text-main);
-    margin: 0;
+.tap-detail {
+    background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;
+    padding:.8rem 1rem; margin-top:.3rem;
 }
+.tap-detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:.35rem .8rem; }
+.tap-dl { font-size:.67rem; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:#9ca3af; }
+.tap-dv { font-size:.78rem; color:#374151; word-break:break-word; }
+.tap-dv a { color:#6366f1; text-decoration:none; }
+.tap-dv a:hover { text-decoration:underline; }
 
-.header-text p {
-    font-size: 0.9rem;
-    color: var(--text-muted);
-    margin: 0;
-}
-
-/* KPI Cards */
-.kpi-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1rem;
-    margin-bottom: 2rem;
-}
-
-.kpi-card {
-    background: white;
-    padding: 1.25rem;
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-
-.kpi-label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-muted);
-}
-
-.kpi-value {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--text-main);
-}
-
-/* Search & Filters */
-.search-section {
-    background: white;
-    padding: 1.5rem;
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
-    margin-bottom: 2rem;
-}
-
-/* Result Cards */
-.results-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-    gap: 1.25rem;
-}
-
-.talent-card {
-    background: white;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 1.5rem;
-    transition: all 0.2s ease;
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-}
-
-.talent-card:hover {
-    border-color: var(--primary);
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-    transform: translateY(-2px);
-}
-
-.talent-header {
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 1rem;
-}
-
-.talent-avatar {
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-weight: 700;
-    font-size: 1.2rem;
-    flex-shrink: 0;
-}
-
-.talent-info {
-    flex: 1;
-    min-width: 0;
-}
-
-.talent-name {
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: var(--text-main);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.talent-role {
-    font-size: 0.9rem;
-    color: var(--text-muted);
-    margin-top: 2px;
-    line-height: 1.2;
-}
-
-.talent-company {
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--primary);
-    margin-top: 4px;
-}
-
-.talent-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 1rem;
-}
-
-.badge {
-    padding: 4px 10px;
-    border-radius: 6px;
-    font-size: 0.7rem;
-    font-weight: 600;
-}
-
-.badge-seniority { background: #eef2ff; color: #4f46e5; }
-.badge-location { background: #f0fdf4; color: #166534; }
-.badge-expertise { background: #fff7ed; color: #9a3412; }
-.badge-recruiter { background: #fef2f2; color: #991b1b; }
-
-.talent-footer {
-    margin-top: auto;
-    padding-top: 1rem;
-    border-top: 1px solid var(--border);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.contact-links {
-    display: flex;
-    gap: 12px;
-}
-
-.contact-link {
-    color: var(--text-muted);
-    text-decoration: none;
-    font-size: 0.8rem;
-    transition: color 0.2s;
-}
-
-.contact-link:hover {
-    color: var(--primary);
-}
-
-/* Empty State */
-.empty-state {
-    text-align: center;
-    padding: 4rem 2rem;
-    background: white;
-    border-radius: var(--radius);
-    border: 2px dashed var(--border);
-}
-
-.empty-state h3 { color: var(--text-main); margin-bottom: 0.5rem; }
-.empty-state p { color: var(--text-muted); }
-
-/* Tabs Styling */
-.stTabs [data-baseweb="tab-list"] {
-    gap: 24px;
-    background-color: transparent;
-}
-
-.stTabs [data-baseweb="tab"] {
-    height: 50px;
-    white-space: pre-wrap;
-    background-color: transparent;
-    border-radius: 4px 4px 0px 0px;
-    gap: 1px;
-    padding-top: 10px;
-    padding-bottom: 10px;
-}
-
-.stTabs [aria-selected="true"] {
-    background-color: transparent;
-    border-bottom: 2px solid var(--primary) !important;
-    color: var(--primary) !important;
-}
+.tap-empty { text-align:center; padding:4rem 2rem; color:#9ca3af; }
+.tap-empty h2 { font-size:1.15rem; font-weight:600; color:#6b7280; margin-bottom:.3rem; }
+.tap-empty p { font-size:.85rem; }
 </style>
 """
 
-# --- SUPABASE CLIENT ---
+st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+
+# ── SUPABASE ─────────────────────────────────────────────────────────────────
+
 @st.cache_resource
 def get_supabase():
-    try:
-        return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-    except Exception as e:
-        st.error(f"Erro ao conectar ao Supabase: {e}")
-        return None
+    return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
-# --- FUNÇÕES DE DADOS ---
 def count_leads():
-    sb = get_supabase()
-    if not sb: return 0
     try:
+        sb = get_supabase()
         result = sb.table(TABLE).select("id", count="exact").limit(1).execute()
         return result.count or 0
     except Exception:
         return 0
 
-@st.cache_data(ttl=600)
 def get_filter_options():
     sb = get_supabase()
-    if not sb: return {}
     options = {}
-    cols = ['senioridade_normalizada', 'expertise', 'segmento_empresa', 'segmento_mercado']
-    for col in cols:
+    for col in ['senioridade_normalizada', 'expertise', 'segmento_empresa', 'segmento_mercado']:
         try:
             result = sb.rpc("get_distinct_values", {"col_name": col}).execute()
             if result.data:
                 options[col] = sorted([r['val'] for r in result.data if r['val'] and r['val'] not in ('nan', '', 'None')])
             else:
+                options[col] = []
+        except Exception:
+            try:
                 result = sb.table(TABLE).select(col).limit(5000).execute()
                 vals = set(r[col] for r in result.data if r.get(col) and r[col] not in ('nan', '', 'None'))
                 options[col] = sorted(vals)
-        except Exception:
-            options[col] = []
+            except Exception:
+                options[col] = []
     return options
 
 def search_leads(query="", filters=None, limit=50):
     sb = get_supabase()
-    if not sb: return []
     q = sb.table(TABLE).select("*")
-    
     if filters:
         if filters.get('senioridade_normalizada'):
             q = q.in_("senioridade_normalizada", filters['senioridade_normalizada'])
@@ -358,7 +214,6 @@ def search_leads(query="", filters=None, limit=50):
                 [f"uf.ilike.{e}" for e in filters['estados']] +
                 [f"estado.ilike.{e}" for e in filters['estados']])
             q = q.or_(or_parts)
-            
     if query.strip():
         terms = [t for t in query.lower().split() if len(t) > 2]
         for term in terms:
@@ -369,17 +224,47 @@ def search_leads(query="", filters=None, limit=50):
                 f"cidade.ilike.%{term}%", f"uf.ilike.%{term}%",
                 f"estado.ilike.%{term}%", f"segmento_mercado.ilike.%{term}%"])
             q = q.or_(or_parts)
-            
-    try:
-        result = q.limit(limit).execute()
-        return result.data or []
-    except Exception as e:
-        st.error(f"Erro na busca: {e}")
-        return []
+    result = q.limit(limit).execute()
+    return result.data or []
 
-# --- PIPELINE DE LIMPEZA & NORMALIZAÇÃO (Original Logic) ---
+def insert_leads_batch(records, progress_callback=None):
+    sb = get_supabase()
+    total = len(records)
+    inserted = 0
+    errors = []
+    for i in range(0, total, BATCH_SIZE):
+        batch = records[i:i + BATCH_SIZE]
+        try:
+            sb.table(TABLE).insert(batch).execute()
+            inserted += len(batch)
+            if progress_callback:
+                pct = 75 + int((i / total) * 25)
+                progress_callback(min(pct, 99), f"Enviando... {inserted:,}/{total:,}")
+        except Exception as e:
+            err_msg = str(e)
+            if 'duplicate' in err_msg.lower() or '23505' in err_msg:
+                for record in batch:
+                    try:
+                        sb.table(TABLE).insert(record).execute()
+                        inserted += 1
+                    except Exception:
+                        pass
+            else:
+                errors.append(f"Lote {i//BATCH_SIZE + 1}: {err_msg[:500]}")
+                if len(errors) == 1:
+                    sample = {k: str(v)[:50] for k, v in batch[0].items() if v is not None}
+                    errors.append(f"Amostra: {sample}")
+                if len(errors) >= 6:
+                    break
+    if errors:
+        st.session_state['pipeline_errors'] = errors
+    return inserted
+
+
+# ── CLEANING & NORMALIZATION ─────────────────────────────────────────────────
+
 def strip_accents(s):
-    return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
+    return ''.join(c for c in unicodedata.normalize('NFD', str(s)) if unicodedata.category(c) != 'Mn').lower().strip()
 
 def _norm_str(s):
     if pd.isna(s): return None
@@ -434,6 +319,12 @@ CAT18_SEN_MAP = {
     'Estagio/Trainee': 'Junior/Estagio', 'Estagiario': 'Junior/Estagio',
     'Coordenacao': 'Lideranca/Executivo', 'Gerencia': 'Lideranca/Executivo',
 }
+EXPERTISE_SEN_MAP = {
+    'Dados e BI': 'Pleno', 'Engenharia de software': 'Pleno',
+    'Agile': 'Senior/Especialista', 'Recrutamento e selecao': 'Pleno',
+    'Operacoes e processos': 'Pleno', 'Financas e controladoria': 'Senior/Especialista',
+    'Customer success': 'Pleno',
+}
 
 def _inferir_exact(nivel, cargo, jt, cat18):
     n = strip_accents(str(nivel).lower().strip())
@@ -444,21 +335,113 @@ def _inferir_exact(nivel, cargo, jt, cat18):
     if any(x in n for x in ('lideranca','executivo','coordenacao','gerencia')): return 'Lideranca/Executivo'
     jt_first = str(jt).split('|')[0] if pd.notna(jt) else ''
     texto = strip_accents((str(cargo) + ' ' + jt_first).lower())
-    if re.search(r'(estagio|estagiario|trainee|aprendiz|intern\b|apprentice)', texto): return 'Junior/Estagio'
+    jt_full = strip_accents(str(jt).lower()) if pd.notna(jt) else ''
+    if re.search(r'(estagio|estagiario|estagiaria|trainee|aprendiz|intern\b|apprentice)', texto): return 'Junior/Estagio'
     if re.search(r'(\bjunior\b|\bjr\b)', texto): return 'Junior/Estagio'
     if re.search(r'\bpleno\b', texto): return 'Pleno'
     if re.search(r'(\bsenior\b|\bsr\b|\bespecialista\b|\blead\b|\bstaff\b|\bprincipal\b)', texto): return 'Senior/Especialista'
     if re.search(r'(diretor|diretora|ceo|cto|cfo|coo|cio|chro|ciso|cmo|head |founder|co-founder|gerente|manager|coordenador|supervisor|\bvp\b|vice.president|managing|presidente)', texto): return 'Lideranca/Executivo'
+    if re.search(r'(\biii\b|\biv\b|\bn3\b|\bn4\b)', texto): return 'Senior/Especialista'
+    if re.search(r'(\bii\b|\bn2\b)', texto): return 'Pleno'
+    if re.search(r'\bn1\b', texto): return 'Junior/Estagio'
+    if re.search(r'(estagio|estagiario|trainee|intern\b|\bjunior\b|\bjr\b)', jt_full): return 'Junior/Estagio'
+    if re.search(r'\bpleno\b', jt_full): return 'Pleno'
+    if re.search(r'(\bsenior\b|\bsr\b|\bespecialista\b|\blead\b|\bstaff\b|\bprincipal\b|\biii\b|\biv\b)', jt_full): return 'Senior/Especialista'
+    if re.search(r'(diretor|diretora|ceo|cto|gerente|manager|coordenador|supervisor|\bvp\b|head |founder|presidente|executive\b)', jt_full): return 'Lideranca/Executivo'
+    cat18_s = str(cat18).strip()
+    if ' - ' in cat18_s:
+        suffix = cat18_s.split(' - ', 1)[1].strip()
+        mapped = CAT18_SEN_MAP.get(suffix)
+        if mapped and mapped != 'Nao Identificado': return mapped
+    prefix18 = cat18_s.split(' - ')[0].strip() if ' - ' in cat18_s else cat18_s
+    if prefix18 in ('Executivo/Dono', 'Gestao/Lideranca'): return 'Lideranca/Executivo'
     return 'Nao Identificado'
+
+def _build_lookups(dataframe):
+    if 'Nivel_Senioridade' not in dataframe.columns: return {}, {}, {}, {}, {}, {}
+    has_nivel = dataframe['Nivel_Senioridade'].notna() & (~dataframe['Nivel_Senioridade'].astype(str).isin(['', 'nan', 'NaN']))
+    base = dataframe[has_nivel].copy()
+    if base.empty: return {}, {}, {}, {}, {}, {}
+    def _norm_nivel(n):
+        n = strip_accents(str(n).lower())
+        if any(x in n for x in ('estagio','trainee','junior','aprendiz')): return 'Junior/Estagio'
+        if 'pleno' in n: return 'Pleno'
+        if any(x in n for x in ('senior','especialista')): return 'Senior/Especialista'
+        if any(x in n for x in ('lideranca','executivo','coordenacao','gerencia')): return 'Lideranca/Executivo'
+        return None
+    base['_sen'] = base['Nivel_Senioridade'].apply(_norm_nivel)
+    base['_cn'] = base['Cargo'].fillna('').apply(lambda x: strip_accents(str(x).lower().strip()))
+    base['_exp'] = base.get('Expertise', pd.Series(dtype=str)).fillna('').astype(str).str.strip()
+    base = base[base['_sen'].notna()]
+    _cols = ['Junior/Estagio','Pleno','Senior/Especialista','Lideranca/Executivo']
+    def _make_lookup(grp_col, min_count=5, min_pct=0.40):
+        if grp_col not in base.columns or base[grp_col].isna().all(): return {}, {}
+        piv = base.groupby([grp_col, '_sen']).size().unstack(fill_value=0)
+        c = [x for x in _cols if x in piv.columns]
+        if not c: return {}, {}
+        piv['t'] = piv[c].sum(axis=1)
+        piv = piv[piv['t'] >= min_count]
+        if piv.empty: return {}, {}
+        piv['maj'] = piv[c].idxmax(axis=1)
+        piv['pct'] = piv[c].max(axis=1) / piv['t']
+        high = piv[piv['pct'] >= 0.55]['maj'].to_dict()
+        approx = piv[(piv['pct'] >= min_pct) & (piv['pct'] < 0.55)]['maj'].to_dict()
+        return high, approx
+    cargo_high, cargo_approx = _make_lookup('_cn', min_count=5)
+    exp_high, exp_approx = _make_lookup('_exp', min_count=10)
+    seg_high, seg_approx = {}, {}
+    if 'segmento_mercado' in dataframe.columns:
+        base['_seg'] = dataframe.loc[base.index, 'segmento_mercado'].fillna('')
+        seg_high, seg_approx = _make_lookup('_seg', min_count=20)
+    return cargo_high, cargo_approx, exp_high, exp_approx, seg_high, seg_approx
+
+def _rescue(cargo, jt, cat18, segmento, expertise, lookups):
+    cargo_high, cargo_approx, exp_high, exp_approx, seg_high, seg_approx = lookups
+    jt_first = str(jt).split('|')[0] if pd.notna(jt) else ''
+    texto = strip_accents((str(cargo) + ' ' + jt_first).lower())
+    jt_full = strip_accents(str(jt).lower()) if pd.notna(jt) else ''
+    combined = texto + ' ' + jt_full
+    if re.search(r'(\biii\b|\biv\b|\bn3\b|\bn4\b)', combined): return 'Senior/Especialista', False
+    if re.search(r'(\bii\b|\bn2\b)', combined): return 'Pleno', False
+    if re.search(r'\bn1\b', combined): return 'Junior/Estagio', False
+    if re.search(r'(estagio|estagiario|trainee|intern\b|\bjunior\b|\bjr\b)', jt_full): return 'Junior/Estagio', False
+    if re.search(r'\bpleno\b', jt_full): return 'Pleno', False
+    if re.search(r'(\bsenior\b|\bsr\b|\bespecialista\b|\blead\b|\bstaff\b|\bprincipal\b|\biii\b|\biv\b)', jt_full): return 'Senior/Especialista', False
+    if re.search(r'(diretor|diretora|ceo|cto|gerente|manager|coordenador|supervisor|\bvp\b|head |founder|presidente|executive\b)', jt_full): return 'Lideranca/Executivo', False
+    cat18_s = str(cat18).strip()
+    if ' - ' in cat18_s:
+        suffix = cat18_s.split(' - ', 1)[1].strip()
+        mapped = CAT18_SEN_MAP.get(suffix)
+        if mapped and mapped != 'Nao Identificado': return mapped, False
+    prefix18 = cat18_s.split(' - ')[0].strip() if ' - ' in cat18_s else cat18_s
+    if prefix18 in ('Executivo/Dono', 'Gestao/Lideranca'): return 'Lideranca/Executivo', False
+    if str(segmento) == 'Executivo/Dono': return 'Lideranca/Executivo', False
+    exp = str(expertise).strip()
+    if exp in EXPERTISE_SEN_MAP: return EXPERTISE_SEN_MAP[exp], False
+    cn = strip_accents(str(cargo).lower().strip())
+    if cn in cargo_high: return cargo_high[cn], False
+    if cn in cargo_approx: return cargo_approx[cn], True
+    if exp in exp_approx and exp not in ('', 'nan'): return exp_approx[exp], True
+    seg = str(segmento).strip()
+    if seg in seg_approx and seg not in ('Sem Cargo Informado', 'Outros/Nao Identificado'):
+        return seg_approx[seg], True
+    return 'Nao Identificado', False
 
 def normalizar_senioridade(df):
     for col in ['Nivel_Senioridade', 'Cargo', 'job_title', 'Categoria_Cargo', 'segmento_mercado', 'Expertise']:
         if col not in df.columns: df[col] = ''
+    lookups = _build_lookups(df)
     df['senioridade_normalizada'] = df.apply(lambda r: _inferir_exact(r.get('Nivel_Senioridade', ''), r.get('Cargo', ''), r.get('job_title', ''), r.get('Categoria_Cargo', '')), axis=1)
     df['senioridade_aproximada'] = False
+    mask_nao = df['senioridade_normalizada'] == 'Nao Identificado'
+    if mask_nao.any():
+        rescued = df[mask_nao].apply(lambda r: _rescue(r.get('Cargo', ''), r.get('job_title', ''), r.get('Categoria_Cargo', ''), r.get('segmento_mercado', ''), r.get('Expertise', ''), lookups), axis=1)
+        df.loc[mask_nao, 'senioridade_normalizada'] = rescued.apply(lambda x: x[0])
+        df.loc[mask_nao, 'senioridade_aproximada'] = rescued.apply(lambda x: x[1])
     return df
 
 def deduplicar_local(df):
+    total_antes = len(df)
     for col in ['salesNavigatorId', 'linkedinUrl', 'linkedinEmail']:
         if col not in df.columns: df[col] = None
     df['_salesnavid_norm'] = df['salesNavigatorId'].apply(_norm_str)
@@ -473,98 +456,95 @@ def deduplicar_local(df):
     mask = df['_email_norm'].notna()
     df = df[~(mask & df.duplicated(subset=['_email_norm'], keep='first'))].copy()
     df = df.drop(columns=['_salesnavid_norm', '_email_norm', '_score'])
-    return df
-
-def insert_leads_batch(records, progress_callback=None):
-    sb = get_supabase()
-    if not sb: return 0
-    total = len(records)
-    inserted = 0
-    for i in range(0, total, BATCH_SIZE):
-        batch = records[i:i + BATCH_SIZE]
-        try:
-            sb.table(TABLE).insert(batch).execute()
-            inserted += len(batch)
-            if progress_callback:
-                pct = int((inserted / total) * 100)
-                progress_callback(pct, f"Enviando... {inserted:,}/{total:,}")
-        except Exception as e:
-            for record in batch:
-                try:
-                    sb.table(TABLE).insert(record).execute()
-                    inserted += 1
-                except: pass
-    return inserted
+    return df, total_antes, len(df)
 
 def pipeline_e_salva(uploaded_file, progress_callback=None):
+    DATAIKU_SCHEMA = [
+        'Sheet Name','Origem','name','firstName','lastName',
+        'Nivel_Senioridade','Expertise','Segmento_Empresa','DDI','DDD_Telefone',
+        'linkedinEmail','company_name','segmento_mercado','Cargo','occupation',
+        'job_title','linkedinUrl','Recrutador?','Publico_Alvo_Ads','gender',
+        'state','Cidade','UF','Estado','Pais','location','premium','jobSeeker',
+        'profileStatus','messageSent','messageReplied','emailSent','emailReplied',
+        'salesNavigatorId','connectedAt','profilePictureUrl','importDate',
+        'company_website','company_linkedinUrl','crmStatus','firstMessageAt',
+        'lastLinkedinReplyDate','lastEmailReplyDate','lastLinkedinMessageSentDate',
+        'lastEmailSentDate','connectionRequestDate',
+        'senioridade_normalizada','senioridade_aproximada',
+    ]
     if progress_callback: progress_callback(5, "Lendo arquivo...")
     name = uploaded_file.name.lower()
     if name.endswith('.csv'):
         df = pd.read_csv(uploaded_file, dtype=str)
-    else:
+        known_cols = {'name', 'linkedinEmail', 'Cargo', 'linkedinUrl', 'company_name', 'Cidade'}
+        if not known_cols.intersection(set(df.columns)):
+            if progress_callback: progress_callback(8, "CSV sem cabecalho detectado...")
+            uploaded_file.seek(0)
+            if len(df.columns) == len(DATAIKU_SCHEMA):
+                df = pd.read_csv(uploaded_file, dtype=str, header=None, names=DATAIKU_SCHEMA)
+            else:
+                df = pd.read_csv(uploaded_file, dtype=str, header=None)
+                for i, col_name in enumerate(DATAIKU_SCHEMA[:len(df.columns)]):
+                    df = df.rename(columns={i: col_name})
+    elif name.endswith(('.xlsx', '.xls')):
         df = pd.read_excel(uploaded_file, dtype=str)
-    
+        known_cols = {'name', 'linkedinEmail', 'Cargo', 'linkedinUrl', 'company_name', 'Cidade'}
+        if not known_cols.intersection(set(df.columns)):
+            if len(df.columns) == len(DATAIKU_SCHEMA):
+                uploaded_file.seek(0)
+                df = pd.read_excel(uploaded_file, dtype=str, header=None, names=DATAIKU_SCHEMA)
+    else:
+        raise ValueError("Use CSV ou XLSX")
     total_raw = len(df)
+    for col in ['Cidade', 'UF', 'Estado', 'Pais', 'location', 'Nivel_Senioridade', 'Cargo', 'job_title', 'Categoria_Cargo', 'segmento_mercado', 'Expertise', 'salesNavigatorId', 'linkedinUrl', 'linkedinEmail']:
+        if col not in df.columns: df[col] = ''
     if progress_callback: progress_callback(20, "Limpando localizacao...")
     df = limpar_localizacao(df)
     if progress_callback: progress_callback(40, "Normalizando senioridade...")
     df = normalizar_senioridade(df)
     if progress_callback: progress_callback(60, "Deduplicando...")
-    df = deduplicar_local(df)
-    
+    df, antes, depois = deduplicar_local(df)
+    if progress_callback: progress_callback(70, f"Preparando {depois:,} leads...")
     df_out = pd.DataFrame()
     for orig, dest in COL_MAP.items():
         if orig in df.columns: df_out[dest] = df[orig].apply(_safe_clean)
         else: df_out[dest] = None
-    
-    # Gerar slugs
     slugs = []
     for idx, row in df.iterrows():
-        slug = _norm_linkedin(row.get('linkedinUrl'))
-        if not slug:
+        slug = row.get('_linkedin_slug')
+        if not slug or pd.isna(slug):
             email = _norm_str(row.get('linkedinEmail', ''))
-            slug = f"email:{email}" if email else f"hash:{hashlib.md5(str(idx).encode()).hexdigest()[:16]}"
+            if email: slug = f"email:{email}"
+            else:
+                snid = _norm_str(row.get('salesNavigatorId', ''))
+                if snid: slug = f"snid:{snid}"
+                else:
+                    raw = f"{row.get('name','')}|{row.get('Cargo','')}|{row.get('company_name','')}"
+                    slug = f"hash:{hashlib.md5(raw.encode()).hexdigest()[:16]}"
         slugs.append(slug)
     df_out['linkedin_slug'] = slugs
-    
+    if progress_callback: progress_callback(75, f"Enviando {depois:,} leads pro banco...")
     records = df_out.to_dict(orient='records')
+    for r in records:
+        for k, v in list(r.items()):
+            if v is None: continue
+            try:
+                if pd.isna(v): r[k] = None; continue
+            except (TypeError, ValueError): pass
+            if str(v).strip().lower() in ('nan', 'none', '', 'nat', 'n/a'): r[k] = None
+        sa = r.get('senioridade_aproximada')
+        if sa is not None: r['senioridade_aproximada'] = str(sa).lower() in ('true', '1', 'yes')
+        else: r['senioridade_aproximada'] = False
     inserted = insert_leads_batch(records, progress_callback)
-    return {'arquivo': uploaded_file.name, 'linhas_raw': total_raw, 'inseridos': inserted}
+    if progress_callback: progress_callback(100, f"Pronto! {inserted:,} leads salvos!")
+    return {'arquivo': uploaded_file.name, 'linhas_raw': total_raw, 'antes_dedup': antes, 'depois_dedup': depois, 'inseridos': inserted}
 
-# --- COMPONENTES DE UI ---
-def render_header():
-    st.markdown(f"""
-    <div class="header-container">
-        <div class="header-icon">BT</div>
-        <div class="header-text">
-            <h1>Buscador de Talentos</h1>
-            <p>Encontre os melhores profissionais com filtros inteligentes e busca semântica.</p>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
 
-def render_kpis(total_leads):
-    st.markdown(f"""
-    <div class="kpi-grid">
-        <div class="kpi-card">
-            <div class="kpi-label">Total de Leads</div>
-            <div class="kpi-value">{total_leads:,}</div>
-        </div>
-        <div class="kpi-card">
-            <div class="kpi-label">Status do Banco</div>
-            <div class="kpi-value" style="color: #10b981;">Online</div>
-        </div>
-        <div class="kpi-card">
-            <div class="kpi-label">Filtros Ativos</div>
-            <div class="kpi-value" style="font-size: 1rem;">Inteligência de Dados</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+# ── CARD RENDERING ───────────────────────────────────────────────────────────
 
-def _avatar_color(name):
-    colors = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b', '#10b981', '#06b6d4']
-    h = sum(ord(c) for c in (name or '?'))
-    return colors[h % len(colors)]
+def _esc(text):
+    if not text: return ''
+    return str(text).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
 
 def _initials(name):
     if not name or name == '-': return '?'
@@ -572,160 +552,281 @@ def _initials(name):
     if len(parts) >= 2: return (parts[0][0] + parts[-1][0]).upper()
     return parts[0][0].upper()
 
-def render_talent_card(r):
-    nome = r.get('name') or 'Profissional'
-    cargo = r.get('cargo') or r.get('occupation') or 'Cargo não informado'
-    company = r.get('company_name') or ''
-    sen = r.get('senioridade_normalizada') or ''
-    expertise = r.get('expertise') or ''
-    loc = f"{r.get('cidade', '')} {r.get('uf', '')}".strip()
-    li_url = r.get('linkedin_url') or '#'
-    email = r.get('linkedin_email') or ''
-    
-    acolor = _avatar_color(nome)
-    ini = _initials(nome)
-    
-    tags_html = ""
-    if sen and sen != 'Nao Identificado': tags_html += f'<span class="badge badge-seniority">{sen}</span>'
-    if loc: tags_html += f'<span class="badge badge-location">{loc}</span>'
-    if expertise: tags_html += f'<span class="badge badge-expertise">{expertise[:25]}</span>'
-    if str(r.get('recrutador')).lower() in ('sim', 'true', '1'):
-        tags_html += f'<span class="badge badge-recruiter">Recrutador</span>'
+def _avatar_color(name):
+    h = sum(ord(c) for c in (name or '?'))
+    return AVATAR_COLORS[h % len(AVATAR_COLORS)]
 
-    return f"""
-    <div class="talent-card">
-        <div class="talent-header">
-            <div class="talent-avatar" style="background: {acolor}">{ini}</div>
-            <div class="talent-info">
-                <div class="talent-name">{nome}</div>
-                <div class="talent-role">{cargo}</div>
-                <div class="talent-company">{company}</div>
-            </div>
-        </div>
-        <div class="talent-tags">
-            {tags_html}
-        </div>
-        <div class="talent-footer">
-            <div class="contact-links">
-                {"<a href='mailto:"+email+"' class='contact-link'>Email</a>" if email else ""}
-                <a href="{li_url}" target="_blank" class="contact-link">LinkedIn</a>
-            </div>
-            <div style="font-size: 0.7rem; color: #94a3b8;">ID: {str(r.get('id'))[:8]}</div>
-        </div>
+def _sen_tag(sen):
+    fg, bg = SEN_TAG_COLORS.get(sen, SEN_TAG_COLORS['Nao Identificado'])
+    return f'<span class="tap-tag" style="background:{bg};color:{fg};">{_esc(sen)}</span>'
+
+def _extra_tag(text, idx=0):
+    fg, bg = TAG_PALETTE[idx % len(TAG_PALETTE)]
+    return f'<span class="tap-tag" style="background:{bg};color:{fg};">{_esc(text)}</span>'
+
+def _loc_tag(text):
+    return f'<span class="tap-tag" style="background:#f0fdf4;color:#15803d;">{_esc(text)}</span>'
+
+def render_cards_html(results):
+    cards = []
+    for r in results:
+        nome = r.get('name') or '-'
+        cargo = r.get('cargo') or r.get('occupation') or '-'
+        company = r.get('company_name') or ''
+        sen = r.get('senioridade_normalizada') or ''
+        expertise = r.get('expertise') or ''
+        segmento = r.get('segmento_empresa') or ''
+        mercado = r.get('segmento_mercado') or ''
+        cidade = r.get('cidade') or ''
+        uf = r.get('uf') or r.get('estado') or ''
+        email = r.get('linkedin_email') or ''
+        tel = r.get('ddd_telefone') or ''
+        li_url = r.get('linkedin_url') or ''
+        recrutador = r.get('recrutador') or ''
+
+        ini = _initials(nome)
+        acolor = _avatar_color(nome)
+
+        tags = ''
+        tag_idx = 0
+        if sen and sen != 'Nao Identificado':
+            tags += _sen_tag(sen)
+        if expertise:
+            tags += _extra_tag(expertise, tag_idx); tag_idx += 1
+        if segmento:
+            tags += _extra_tag(segmento, tag_idx); tag_idx += 1
+        if mercado:
+            tags += _extra_tag(mercado, tag_idx); tag_idx += 1
+        loc_parts = [p for p in [cidade, uf] if p]
+        if loc_parts:
+            tags += _loc_tag(' / '.join(loc_parts))
+        if recrutador and str(recrutador).lower() in ('sim', 'yes', 'true', '1'):
+            tags += '<span class="tap-tag tap-tag-rec">Recrutador</span>'
+
+        contacts = ''
+        if email and '@' in email:
+            contacts += f'<span>{_esc(email)}</span>'
+        if tel:
+            contacts += f'<span>{_esc(tel)}</span>'
+        if li_url and 'linkedin' in li_url.lower():
+            contacts += f'<a href="{_esc(li_url)}" target="_blank">Ver LinkedIn</a>'
+        contact_html = f'<div class="tap-contact">{contacts}</div>' if contacts else ''
+        company_html = f'<div class="tap-cc">{_esc(company)}</div>' if company else ''
+
+        card = f'''<div class="tap-card">
+  <div class="tap-ch">
+    <div class="tap-av" style="background:{acolor};">{ini}</div>
+    <div class="tap-ci">
+      <div class="tap-cn">{_esc(nome)}</div>
+      <div class="tap-cr">{_esc(cargo)}</div>
+      {company_html}
     </div>
-    """
+  </div>
+  <div class="tap-tags">{tags}</div>
+  {contact_html}
+</div>'''
+        cards.append(card)
+    return '<div class="tap-grid">' + '\n'.join(cards) + '</div>'
 
-# --- APP PRINCIPAL ---
-def main():
-    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
-    render_header()
-    
+
+# ── SIDEBAR ──────────────────────────────────────────────────────────────────
+
+with st.sidebar:
+    st.markdown("### Importar Planilha")
     total = count_leads()
-    
-    tab_search, tab_import, tab_admin = st.tabs([
-        "🔍 Buscar Talentos", 
-        "📥 Importar Dados", 
-        "⚙️ Manutenção"
-    ])
-    
-    # --- ABA BUSCA ---
-    with tab_search:
-        render_kpis(total)
-        
-        with st.container():
-            st.markdown('<div class="search-section">', unsafe_allow_html=True)
-            c1, c2 = st.columns([3, 1])
-            with c1:
-                query = st.text_input("O que você procura?", placeholder="Ex: Desenvolvedor Senior em São Paulo, Especialista em Dados...")
-            with c2:
-                limit = st.selectbox("Resultados", [50, 100, 500, 1000], index=0)
-            
-            with st.expander("🎯 Filtros Avançados", expanded=False):
-                options = get_filter_options()
-                f1, f2, f3 = st.columns(3)
-                with f1: sen_f = st.multiselect("Senioridade", options.get('senioridade_normalizada', []))
-                with f2: exp_f = st.multiselect("Expertise", options.get('expertise', []))
-                with f3: seg_f = st.multiselect("Segmento", options.get('segmento_empresa', []))
-            st.markdown('</div>', unsafe_allow_html=True)
-
-        if query or sen_f or exp_f or seg_f:
-            filters = {}
-            if sen_f: filters['senioridade_normalizada'] = sen_f
-            if exp_f: filters['expertise'] = exp_f
-            if seg_f: filters['segmento_empresa'] = seg_f
-            
-            with st.spinner("Buscando talentos..."):
-                results = search_leads(query, filters, limit)
-            
-            if results:
-                st.subheader(f"🎯 {len(results)} profissionais encontrados")
-                
-                ac1, ac2, _ = st.columns([1, 1, 4])
-                df_res = pd.DataFrame(results)
-                with ac1:
-                    st.download_button("📥 Exportar CSV", df_res.to_csv(index=False).encode('utf-8'), "talentos.csv", "text/csv", use_container_width=True)
-                with ac2:
-                    emails = [r.get('linkedin_email') for r in results if r.get('linkedin_email')]
-                    if emails:
-                        st.download_button("📧 Lista de Emails", "\n".join(emails), "emails.txt", "text/plain", use_container_width=True)
-                
-                cards_html = "".join([render_talent_card(r) for r in results])
-                st.markdown(f'<div class="results-grid">{cards_html}</div>', unsafe_allow_html=True)
-            else:
-                st.markdown("""
-                <div class="empty-state">
-                    <h3>Nenhum resultado encontrado</h3>
-                    <p>Tente ajustar seus filtros ou usar termos mais genéricos na busca.</p>
-                </div>
-                """, unsafe_allow_html=True)
-        else:
-            st.markdown("""
-            <div class="empty-state">
-                <h3>Pronto para começar?</h3>
-                <p>Digite um cargo, tecnologia ou use os filtros acima para explorar o banco de talentos.</p>
-            </div>
-            """, unsafe_allow_html=True)
-
-    # --- ABA IMPORTAÇÃO ---
-    with tab_import:
-        st.subheader("📥 Importar Nova Planilha")
-        st.info("O sistema aceita arquivos CSV ou XLSX. Os dados passarão por limpeza, normalização de senioridade e deduplicação automática.")
-        
-        uploaded = st.file_uploader("Arraste seu arquivo aqui", type=['csv', 'xlsx'])
-        if uploaded:
-            if st.button("🚀 Iniciar Processamento", type="primary"):
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                
-                def update_prog(p, m):
-                    progress_bar.progress(p/100)
-                    status_text.text(m)
-                
-                try:
-                    res = pipeline_e_salva(uploaded, update_prog)
-                    st.success(f"Importação concluída! {res['inseridos']:,} leads salvos.")
-                    st.balloons()
-                except Exception as e:
-                    st.error(f"Erro no processamento: {e}")
-
-    # --- ABA ADMIN ---
-    with tab_admin:
-        st.subheader("⚙️ Manutenção do Sistema")
-        c1, c2 = st.columns(2)
-        with c1:
-            st.write("### Estatísticas")
-            st.metric("Total de Leads", f"{total:,}")
-        
-        with c2:
-            st.write("### Ações Críticas")
-            if st.button("⚠️ LIMPAR TODO O BANCO", use_container_width=True):
+    if total > 0:
+        st.success(f"Banco ativo: **{total:,}** leads")
+    else:
+        st.info("Banco vazio -- suba sua primeira planilha!")
+    st.markdown("---")
+    uploaded = st.file_uploader("Arraste CSV ou XLSX aqui", type=['csv', 'xlsx', 'xls'], label_visibility="collapsed")
+    if uploaded and st.button("Processar e Salvar", type="primary", use_container_width=True):
+        progress_bar = st.progress(0)
+        spinner_placeholder = st.empty()
+        def update_progress(pct, msg):
+            progress_bar.progress(pct / 100)
+            spinner_placeholder.markdown(
+                f'<div style="display:flex;align-items:center;gap:8px;">'
+                f'<div style="width:18px;height:18px;border:2.5px solid #e2e8f0;border-top:2.5px solid #6366f1;'
+                f'border-radius:50%;animation:spin 1s linear infinite;"></div>'
+                f'<span style="font-size:.82rem;color:#6b7280;">{msg}</span></div>'
+                f'<style>@keyframes spin{{0%{{transform:rotate(0deg)}}100%{{transform:rotate(360deg)}}}}</style>',
+                unsafe_allow_html=True)
+        try:
+            result = pipeline_e_salva(uploaded, update_progress)
+            spinner_placeholder.empty()
+            st.session_state['pipeline_success'] = (
+                f"**{result['arquivo']}** -- "
+                f"Linhas: {result['linhas_raw']:,} | "
+                f"Dedup: {result['depois_dedup']:,} | "
+                f"Salvos: {result['inseridos']:,}")
+            st.cache_data.clear()
+            st.rerun()
+        except Exception as e:
+            import traceback
+            spinner_placeholder.empty()
+            st.session_state['pipeline_errors'] = [f"Erro: {e}", traceback.format_exc()]
+            st.rerun()
+    st.markdown("---")
+    st.caption("Cada planilha passa pelo pipeline completo (limpeza > normalizacao > deduplicacao) e e adicionada ao banco.")
+    if count_leads() > 0:
+        st.markdown("---")
+        with st.expander("Manutencao"):
+            if st.button("LIMPAR BANCO", use_container_width=True):
                 sb = get_supabase()
-                try:
-                    sb.table(TABLE).delete().neq("id", 0).execute()
-                    st.success("Banco limpo com sucesso!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erro ao limpar banco: {e}")
+                with st.spinner("Limpando..."):
+                    try:
+                        while True:
+                            batch = sb.table(TABLE).select("id").limit(500).execute()
+                            ids = [x["id"] for x in batch.data]
+                            if not ids: break
+                            sb.table(TABLE).delete().in_("id", ids).execute()
+                        st.success("Banco limpo!")
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro: {e}")
 
-if __name__ == "__main__":
-    main()
+
+# ── MAIN ─────────────────────────────────────────────────────────────────────
+
+st.markdown(
+    '<div class="tap-header">'
+    '<div class="tap-header-icon">BT</div>'
+    '<h1>Buscador de Talentos</h1>'
+    '</div>'
+    '<p class="tap-header-sub">Combine filtros e texto livre -- clique num card para ver detalhes, ou selecione varios</p>',
+    unsafe_allow_html=True)
+
+if st.session_state.get('pipeline_errors'):
+    st.error("Erros durante o upload:")
+    for err in st.session_state['pipeline_errors'][:5]:
+        st.code(err, language="text")
+    if st.button("Fechar erros"):
+        del st.session_state['pipeline_errors']
+        st.rerun()
+
+if st.session_state.get('pipeline_success'):
+    st.success(st.session_state['pipeline_success'])
+    if st.button("Fechar"):
+        del st.session_state['pipeline_success']
+        st.rerun()
+
+total = count_leads()
+if total == 0:
+    st.markdown(
+        '<div class="tap-empty"><h2>Nenhum lead no banco</h2>'
+        '<p>Use a barra lateral para subir sua primeira planilha.</p></div>',
+        unsafe_allow_html=True)
+    st.stop()
+
+st.markdown(
+    f'<div class="tap-kpis">'
+    f'<div class="tap-kpi"><div class="tap-kpi-dot blue"></div>'
+    f'<div><div class="tap-kpi-label">Total de leads</div><div class="tap-kpi-val">{total:,}</div></div></div>'
+    f'<div class="tap-kpi"><div class="tap-kpi-dot green"></div>'
+    f'<div><div class="tap-kpi-label">Status</div><div class="tap-kpi-val">Online</div></div></div>'
+    f'</div>',
+    unsafe_allow_html=True)
+
+consulta = st.text_input("Busca livre", placeholder='Ex: head de produto SP, engenheiro senior, data analyst')
+
+@st.cache_data(ttl=300)
+def cached_filter_options():
+    return get_filter_options()
+
+options = cached_filter_options()
+
+with st.expander("Filtros", expanded=False):
+    fc1, fc2, fc3 = st.columns(3)
+    with fc1: fil_senioridade = st.multiselect("Senioridade", options.get('senioridade_normalizada', []))
+    with fc2: fil_expertise = st.multiselect("Expertise", options.get('expertise', []))
+    with fc3: fil_segmento = st.multiselect("Segmento empresa", options.get('segmento_empresa', []))
+    fc4, fc5 = st.columns(2)
+    with fc4: fil_mercado = st.multiselect("Area de mercado", options.get('segmento_mercado', []))
+    with fc5:
+        ESTADOS_BR = sorted(['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'])
+        fil_estados = st.multiselect("Estado (UF)", ESTADOS_BR)
+
+LIMIT_OPTIONS = {50: "50", 100: "100", 500: "500", 10000: "Todos"}
+limit_val = st.select_slider("Quantidade de resultados", options=list(LIMIT_OPTIONS.keys()), value=50, format_func=lambda x: LIMIT_OPTIONS[x])
+
+filters = {}
+if fil_senioridade: filters['senioridade_normalizada'] = fil_senioridade
+if fil_expertise: filters['expertise'] = fil_expertise
+if fil_segmento: filters['segmento_empresa'] = fil_segmento
+if fil_mercado: filters['segmento_mercado'] = fil_mercado
+if fil_estados: filters['estados'] = fil_estados
+
+if not (bool(filters) or bool(consulta.strip())):
+    st.markdown(
+        '<div class="tap-empty"><h2>Pronto para buscar</h2>'
+        '<p>Use os filtros ou a busca livre acima para encontrar perfis.</p></div>',
+        unsafe_allow_html=True)
+    st.stop()
+
+with st.spinner("Buscando..."):
+    results = search_leads(query=consulta, filters=filters, limit=limit_val)
+
+n_results = len(results)
+st.markdown(f'<div class="tap-rbadge">{n_results} perfil(s) encontrado(s)</div>', unsafe_allow_html=True)
+
+if results:
+    df_export = pd.DataFrame(results)
+    cols_export = [c for c in COLUNAS_BANCO if c in df_export.columns]
+    csv_data = df_export[cols_export].to_csv(index=False).encode('utf-8-sig')
+    ecol1, ecol2, _ = st.columns([1, 1, 4])
+    with ecol1:
+        st.download_button("Exportar CSV", csv_data, "resultados.csv", "text/csv")
+    with ecol2:
+        emails = [r.get('linkedin_email') for r in results if r.get('linkedin_email') and '@' in str(r.get('linkedin_email', ''))]
+        if emails:
+            st.download_button("Exportar emails", '\n'.join(emails), "emails.txt", "text/plain")
+
+if results:
+    st.markdown(render_cards_html(results), unsafe_allow_html=True)
+
+    # Detail panel via selectbox (no broken emoji expanders)
+    st.markdown("---")
+    names_list = [f"{i+1}. {r.get('name', '-')}" for i, r in enumerate(results)]
+    selected = st.selectbox("Abrir ficha tecnica de:", ["-- Selecione --"] + names_list)
+    if selected != "-- Selecione --":
+        idx = names_list.index(selected)
+        r = results[idx]
+        nome = r.get('name') or '-'
+        cargo = r.get('cargo') or r.get('occupation') or '-'
+        company = r.get('company_name') or '-'
+        job_title = r.get('job_title') or ''
+        sen = r.get('senioridade_normalizada') or '-'
+        expertise = r.get('expertise') or '-'
+        segmento = r.get('segmento_empresa') or '-'
+        mercado = r.get('segmento_mercado') or '-'
+        cidade = r.get('cidade') or ''
+        uf = r.get('uf') or r.get('estado') or ''
+        email = r.get('linkedin_email') or '-'
+        tel = r.get('ddd_telefone') or '-'
+        li_url = r.get('linkedin_url') or ''
+        recrutador = r.get('recrutador') or '-'
+        pais = r.get('pais') or ''
+        publico = r.get('publico_alvo_ads') or '-'
+        loc_str = ' / '.join([p for p in [cidade, uf, pais] if p]) or '-'
+        li_link = f'<a href="{_esc(li_url)}" target="_blank">{_esc(li_url[:60])}</a>' if li_url and 'linkedin' in li_url.lower() else '-'
+        approx_note = ''
+        if r.get('senioridade_aproximada') and str(r['senioridade_aproximada']).lower() in ('true', '1'):
+            approx_note = ' <span style="color:#d97706;font-size:.72rem;">(aproximada)</span>'
+        st.markdown(f'''<div class="tap-detail"><div class="tap-detail-grid">
+  <div><div class="tap-dl">Nome</div><div class="tap-dv">{_esc(nome)}</div></div>
+  <div><div class="tap-dl">Cargo</div><div class="tap-dv">{_esc(cargo)}</div></div>
+  <div><div class="tap-dl">Job Title</div><div class="tap-dv">{_esc(job_title) if job_title else "-"}</div></div>
+  <div><div class="tap-dl">Empresa</div><div class="tap-dv">{_esc(company)}</div></div>
+  <div><div class="tap-dl">Senioridade</div><div class="tap-dv">{_esc(sen)}{approx_note}</div></div>
+  <div><div class="tap-dl">Expertise</div><div class="tap-dv">{_esc(expertise)}</div></div>
+  <div><div class="tap-dl">Segmento</div><div class="tap-dv">{_esc(segmento)}</div></div>
+  <div><div class="tap-dl">Area de mercado</div><div class="tap-dv">{_esc(mercado)}</div></div>
+  <div><div class="tap-dl">Localizacao</div><div class="tap-dv">{_esc(loc_str)}</div></div>
+  <div><div class="tap-dl">Publico alvo</div><div class="tap-dv">{_esc(publico)}</div></div>
+  <div><div class="tap-dl">Email</div><div class="tap-dv">{_esc(email)}</div></div>
+  <div><div class="tap-dl">Telefone</div><div class="tap-dv">{_esc(tel)}</div></div>
+  <div><div class="tap-dl">LinkedIn</div><div class="tap-dv">{li_link}</div></div>
+  <div><div class="tap-dl">Recrutador</div><div class="tap-dv">{_esc(recrutador)}</div></div>
+</div></div>''', unsafe_allow_html=True)
